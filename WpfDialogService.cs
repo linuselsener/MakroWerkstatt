@@ -19,6 +19,11 @@ public sealed class WpfDialogService(Window owner) : IDialogService
         "Makro löschen", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)
         == MessageBoxResult.Yes;
 
+    public bool ConfirmEncryptExistingMacros(int macroCount) => MessageBox.Show(owner,
+        $"Sollen {macroCount} bestehende Klartext-Makrodatei(en) jetzt verschlüsselt werden? Jede Datei wird vor dem Ersetzen zurückgelesen und geprüft.",
+        "Bestehende Makros verschlüsseln", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)
+        == MessageBoxResult.Yes;
+
     public ClosePromptChoice ConfirmCloseWithUnsavedChanges() => MessageBox.Show(owner,
         "Es gibt noch nicht gespeicherte Makroänderungen. Möchtest du sie vor dem Schließen speichern?",
         "Makro nicht gespeichert", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel) switch

@@ -19,6 +19,7 @@ public interface IDialogService
     bool ConfirmRecordingConsent();
     bool ConfirmDiscardChanges();
     bool ConfirmDeleteMacro(string name);
+    bool ConfirmEncryptExistingMacros(int macroCount);
     ClosePromptChoice ConfirmCloseWithUnsavedChanges();
     void Show(string message, string title, DialogKind kind);
 }

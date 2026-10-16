@@ -110,7 +110,7 @@ public sealed class MainViewModelTests
         viewModel.SaveMacroCommand.Execute(null);
         var saved = context.Storage.LoadById(viewModel.CurrentMacro!.Id);
         Assert.Equal("Synthetic macro", saved.Name);
-        Assert.Equal(MacroStorage.CurrentFormatVersion, saved.FormatVersion);
+        Assert.Equal(MacroStorage.PayloadFormatVersion, saved.FormatVersion);
         Assert.True(File.Exists(Path.Combine(context.Storage.MacroFolder, $"{saved.Id:N}.json")));
 
         viewModel.LoadLibrary(showWarnings: false);
@@ -128,6 +128,34 @@ public sealed class MainViewModelTests
         Assert.False(File.Exists(Path.Combine(context.Storage.MacroFolder, $"{saved.Id:N}.json")));
         Assert.Empty(viewModel.Library);
         Assert.Null(viewModel.CurrentMacro);
+    }
+
+    [Fact]
+    public void Encryption_setting_is_persisted_and_existing_macro_migration_requires_dialog_confirmation()
+    {
+        using var context = new TestContext();
+        var dialogs = new FakeDialogService();
+        using var viewModel = new MainViewModel(context.Storage, dialogs);
+
+        viewModel.LoadSettings();
+        Assert.True(viewModel.EncryptMacros);
+        viewModel.EncryptMacros = false;
+        viewModel.SaveSettings(showFailure: true);
+        Assert.False(context.Storage.LoadSettings().EncryptMacros);
+
+        var document = new MacroDocument
+        {
+            Name = "Synthetic plaintext macro",
+            Actions = [new MacroAction { Type = MacroActionType.KeyDown, KeyCode = 65 }]
+        };
+        context.WriteFixture(document);
+        viewModel.EncryptExistingMacrosCommand.Execute(null);
+
+        Assert.Equal(1, dialogs.ConfirmedMigrationCount);
+        Assert.Contains("1 erfolgreich, 0 fehlgeschlagen", viewModel.FooterMessage, StringComparison.Ordinal);
+        using var savedJson = System.Text.Json.JsonDocument.Parse(
+            File.ReadAllBytes(Path.Combine(context.Storage.MacroFolder, $"{document.Id:N}.json")));
+        Assert.Equal(MacroStorage.CurrentFormatVersion, savedJson.RootElement.GetProperty("formatVersion").GetInt32());
     }
 
     [Fact]

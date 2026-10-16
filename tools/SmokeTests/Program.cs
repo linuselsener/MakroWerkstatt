@@ -103,8 +103,11 @@ try
 
     storage.Save(macro);
     var reopened = storage.LoadById(id);
-    Require(reopened.FormatVersion == MacroStorage.CurrentFormatVersion,
-        "Das gespeicherte Makro verwendet nicht die aktuelle Formatversion.");
+    Require(reopened.FormatVersion == MacroStorage.PayloadFormatVersion,
+        "Das entschlüsselte Makro verwendet nicht die aktuelle Payload-Formatversion.");
+    using (var savedEnvelope = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(storage.MacroFolder, $"{id:N}.json"))))
+        Require(savedEnvelope.RootElement.GetProperty("formatVersion").GetInt32() == MacroStorage.CurrentFormatVersion,
+            "Das gespeicherte Makro verwendet nicht die verschlüsselte Formatversion 3.");
     Require(reopened.Actions.Count == 2, "Die Aktionsanzahl stimmt nach dem Öffnen nicht.");
     Require(reopened.Actions[1].AtMs == 20 && reopened.Actions[1].Type == MacroActionType.KeyUp,
         "Reihenfolge, Zeitstempel oder Aktionstyp sind nach dem Öffnen falsch.");
@@ -231,6 +234,7 @@ sealed class TestDialogService : IDialogService
     public bool ConfirmRecordingConsent() => true;
     public bool ConfirmDiscardChanges() => true;
     public bool ConfirmDeleteMacro(string name) => true;
+    public bool ConfirmEncryptExistingMacros(int macroCount) => true;
     public ClosePromptChoice ConfirmCloseWithUnsavedChanges() => ClosePromptChoice.Discard;
     public void Show(string message, string title, DialogKind kind) { }
 }

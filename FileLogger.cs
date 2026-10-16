@@ -18,7 +18,15 @@ public static class FileLogger
     private static Func<DateTimeOffset> _timestampProvider = static () => DateTimeOffset.Now;
 
     public static void Initialize(string? directoryOverride = null) =>
-        InitializeCore(directoryOverride, static () => DateTimeOffset.Now);
+        InitializeCore(directoryOverride ?? GetConfiguredLogDirectory(), static () => DateTimeOffset.Now);
+
+    private static string? GetConfiguredLogDirectory()
+    {
+        var configuredDataDirectory = Environment.GetEnvironmentVariable("MAKROWERKSTATT_DATA_DIR");
+        return string.IsNullOrWhiteSpace(configuredDataDirectory)
+            ? null
+            : Path.Combine(configuredDataDirectory, "logs");
+    }
 
     internal static void InitializeForTesting(string directoryOverride, Func<DateTimeOffset> timestampProvider)
     {

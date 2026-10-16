@@ -32,7 +32,9 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _inputCaptureService = new GlobalInputCaptureService(new WpfUiDispatcher(Dispatcher));
-        _viewModel = new MainViewModel(new MacroStorage(), new WpfDialogService(this), _inputCaptureService)
+        var configuredDataDirectory = Environment.GetEnvironmentVariable("MAKROWERKSTATT_DATA_DIR");
+        var storage = new MacroStorage(string.IsNullOrWhiteSpace(configuredDataDirectory) ? null : configuredDataDirectory);
+        _viewModel = new MainViewModel(storage, new WpfDialogService(this), _inputCaptureService)
         {
             ShouldIgnoreCapturedAction = ShouldIgnoreOwnWindowAction
         };

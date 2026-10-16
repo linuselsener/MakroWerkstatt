@@ -46,9 +46,19 @@ Alle Makros und Einstellungen bleiben im Benutzerprofil auf diesem PC:
 - Makros: `%LOCALAPPDATA%\MakroWerkstatt\Makros\<ID>.json`
 - Einstellungen einschließlich der globalen Tastenkürzel: `%LOCALAPPDATA%\MakroWerkstatt\settings.json`
 
-Die App baut keine Netzwerkverbindung auf und sendet keine Makros, Eingaben oder Nutzungsdaten. JSON-Dateien werden über temporäre Dateien lokal gespeichert und anschließend ersetzt. Die Anwendungsdaten lassen sich mit dem Windows-Explorer sichern oder entfernen.
+Die App baut keine Netzwerkverbindung auf und sendet keine Makros, Eingaben oder Nutzungsdaten. Makrodateien werden in einer temporären Datei im selben Ordner vorbereitet und nach erfolgreichem Zurücklesen atomar ersetzt. Beim Start oder Laden werden vorhandene Dateien nicht automatisch umgeschrieben.
 
-Makrodateien werden im Format **MakroWerkstatt JSON, `formatVersion: 2`** gespeichert. Bestehende Makros in Formatversion 1 bleiben lesbar und werden beim nächsten Speichern auf Version 2 aktualisiert. Ein Dokument enthält eine stabile ID, Name, Erstellungs- und Änderungszeit in UTC sowie die geordnete Aktionsliste. `atMs` ist ein nicht negativer Millisekunden-Zeitstempel relativ zum aktiven Aufnahmebeginn; Pausen sind ausgenommen. Aktionsarten sind `keyDown`, `keyUp`, `mouseMove`, `mouseMoveRelative`, `mouseButtonDown`, `mouseButtonUp` und `mouseWheel`. `mouseMove` enthält Bildschirm-Pixelkoordinaten; `mouseMoveRelative` enthält Maus-Deltas (`x` = ΔX, `y` = ΔY). Tasten werden als virtuelle Windows-Taste plus Scan-Code gespeichert. Unbekannte oder neuere Formatversionen werden nicht abgespielt und beim Öffnen als Problem gemeldet. Ein vollständiges Beispiel liegt in [`docs\makro-format-v2.example.json`](docs/makro-format-v2.example.json). Die Struktur ist offen dokumentiert und kann von Hand gesichert oder geprüft werden.
+Makros werden standardmäßig im **MakroWerkstatt-Format 3** gespeichert: Die JSON-Hülle enthält `formatVersion: 3`, `encryption: "dpapi-currentuser"` und eine Base64-Nutzlast. Darin liegt das bisherige Format-2-Dokument, das Windows DPAPI mit dem Scope `CurrentUser` schützt. Version 1 und 2 bleiben lesbar. Die Aktion **Bestehende Makros verschlüsseln** migriert vorhandene Klartextdateien einzeln nach Bestätigung.
+
+Das Format-2-Payload-Dokument enthält eine stabile ID, Name, Erstellungs- und Änderungszeit in UTC sowie die geordnete Aktionsliste. `atMs` ist ein nicht negativer Millisekunden-Zeitstempel relativ zum aktiven Aufnahmebeginn; Pausen sind ausgenommen. Aktionsarten sind `keyDown`, `keyUp`, `mouseMove`, `mouseMoveRelative`, `mouseButtonDown`, `mouseButtonUp` und `mouseWheel`. `mouseMove` enthält Bildschirm-Pixelkoordinaten; `mouseMoveRelative` enthält Maus-Deltas (`x` = ΔX, `y` = ΔY). Tasten werden als virtuelle Windows-Taste plus Scan-Code gespeichert. Unbekannte oder neuere Formatversionen werden nicht abgespielt und beim Öffnen als Problem gemeldet. Beispiele: [Format 2](docs/makro-format-v2.example.json) und [Format-3-Hülle](docs/makro-format-v3.example.json). Das Format-3-Beispiel enthält absichtlich einen erfundenen Platzhalter und lässt sich nicht entschlüsseln.
+
+## Datenschutz und Verschlüsselung
+
+Standardmäßig verschlüsselt die App das gesamte Makrodokument einschließlich Name, Zeitangaben und Aktionen mit Windows DPAPI für das aktuelle Benutzerkonto. Die Einstellung **Makros verschlüsseln** kann neue Speichervorgänge auf das bisherige Klartextformat 2 umstellen. Einstellungen wie Kürzel und Wiedergabe-Timing bleiben unverschlüsselt; sie enthalten keine aufgezeichneten Eingaben.
+
+Verschlüsselte Makros lassen sich nur mit dem Windows-Benutzerkonto öffnen, für das sie geschützt wurden. Eine Sicherung der Makrodateien allein garantiert daher keine Wiederherstellung: Nach einem Rechnerwechsel oder Verlust des Windows-Profils können verschlüsselte Makros unlesbar sein. Plane Backups so, dass das zugehörige Windows-Profil erhalten und wiederherstellbar bleibt. Die App entschlüsselt bestehende Dateien beim Laden nur im Arbeitsspeicher und ersetzt sie nicht automatisch.
+
+Makros können weiterhin Passwörter, Nachrichten und andere vertrauliche Eingaben enthalten. DPAPI schützt gespeicherte Dateien im Ruhezustand, aber nicht vor Malware, die im selben Windows-Benutzerkonto ausgeführt wird. Behandle gespeicherte oder bewusst unverschlüsselte Makros weiterhin vertraulich.
 
 ## Tastenkürzel
 
@@ -75,11 +85,11 @@ Makrodateien werden im Format **MakroWerkstatt JSON, `formatVersion: 2`** gespei
 - `GlobalInputHook.cs`, `MacroPlayback.cs` – Windows-Hooks und Eingabewiedergabe
 - `Assets\makrowerkstatt.svg` – editierbare Symbolquelle
 - `Assets\makrowerkstatt.ico` – mehrstufiges Windows-Symbol
-- `docs\makro-format-v1.example.json` und `docs\makro-format-v2.example.json` – Beispiele für das alte und aktuelle Format
+- `docs\makro-format-v1.example.json`, `docs\makro-format-v2.example.json` und `docs\makro-format-v3.example.json` – Formatbeispiele
 - `tools\generate-icon.ps1` – Symbol neu erzeugen
 - `tools\publish-windows.ps1` – EXE veröffentlichen und Desktop-Verknüpfung einrichten
 - `tools\SmokeTests\` – Offline-Smoke-Test für JSON-Format und Timinglogik
-- `tools\verify-ui.ps1` – UI-Abläufe mit Windows UI Automation prüfen; erfordert eine geöffnete App und entfernt sein temporäres Testmakro
+- `tools\verify-ui.ps1` – UI-Abläufe mit Windows UI Automation in einer isolierten App-Instanz und einem temporären Datenordner prüfen
 
 ## Tests ausführen
 
@@ -98,7 +108,7 @@ Der Logik-Smoke-Test benötigt nur das .NET 8 SDK:
 dotnet run --project .\tools\SmokeTests\SmokeTests.csproj -c Release
 ```
 
-Für den UI-Smoke-Test die App öffnen und anschließend in einem zweiten PowerShell-Fenster ausführen:
+Der UI-Smoke-Test startet eine eigene App-Instanz mit einem eindeutigen temporären Datenordner und greift nicht auf `%LOCALAPPDATA%\MakroWerkstatt` zu. Nach einem Release-Build kannst du ihn so starten:
 
 ```powershell
 pwsh -ExecutionPolicy Bypass -File .\tools\verify-ui.ps1

@@ -41,6 +41,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private int _durationUnitIndex;
     private bool _randomizerEnabled;
     private bool _relativeMouseMovement;
+    private bool _encryptMacros = true;
     private string _repeatCount = "1";
     private string _randomMinMs = "1";
     private string _randomMaxMs = "80";
@@ -56,6 +57,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public ICommand ReloadLibraryCommand { get; }
     public ICommand SaveMacroCommand { get; }
     public ICommand DeleteMacroCommand { get; }
+    public ICommand EncryptExistingMacrosCommand { get; }
     public ICommand PlayCommand { get; }
     public ICommand StopPlaybackCommand { get; }
     public ICommand StartRecordingCommand { get; }
@@ -227,6 +229,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public int DurationUnitIndex { get => _durationUnitIndex; set => UpdateSetting(ref _durationUnitIndex, value); }
     public bool RandomizerEnabled { get => _randomizerEnabled; set => UpdateSetting(ref _randomizerEnabled, value); }
     public bool RelativeMouseMovement { get => _relativeMouseMovement; set => UpdateSetting(ref _relativeMouseMovement, value); }
+    public bool EncryptMacros { get => _encryptMacros; set => UpdateSetting(ref _encryptMacros, value); }
     public string RepeatCount { get => _repeatCount; set => UpdateSetting(ref _repeatCount, value); }
     public string RandomMinMs { get => _randomMinMs; set => UpdateSetting(ref _randomMinMs, value); }
     public string RandomMaxMs { get => _randomMaxMs; set => UpdateSetting(ref _randomMaxMs, value); }
@@ -251,6 +254,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ReloadLibraryCommand = new RelayCommand(ReloadLibrary, () => !IsBusy);
         SaveMacroCommand = new RelayCommand(() => SaveCurrentMacro(showSuccess: true), CanSaveMacro);
         DeleteMacroCommand = new RelayCommand(DeleteCurrentMacro, () => !IsBusy && CurrentIsSaved && CurrentMacro is not null);
+        EncryptExistingMacrosCommand = new RelayCommand(EncryptExistingMacros, () => !IsBusy);
         PlayCommand = new RelayCommand(StartPlayback, CanPlay);
         StopPlaybackCommand = new RelayCommand(StopPlayback, () => IsPlaying);
         StartRecordingCommand = new RelayCommand(StartRecording, () => !IsBusy);
@@ -321,14 +325,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         CurrentMacro.Name = name;
         CurrentMacro.Actions = Actions.ToList();
         CurrentMacro.UpdatedUtc = DateTimeOffset.UtcNow;
-        CurrentMacro.FormatVersion = MacroStorage.CurrentFormatVersion;
+        CurrentMacro.FormatVersion = MacroStorage.PayloadFormatVersion;
         try
         {
-            _storage.Save(CurrentMacro);
+            _storage.Save(CurrentMacro, EncryptMacros);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _dialogs.Show($"Das Makro konnte nicht lokal gespeichert werden.\n\n{ex.Message}",
+            _dialogs.Show("Das Makro konnte nicht lokal gespeichert oder geprüft werden. Die bisherige Datei wurde nicht ersetzt.",
                 "Speichern fehlgeschlagen", DialogKind.Error);
             return false;
         }
@@ -393,6 +397,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _durationUnitIndex = Math.Clamp(settings.DurationUnitIndex, 0, 1);
         _randomizerEnabled = settings.RandomizerEnabled;
         _relativeMouseMovement = settings.RelativeMouseMovement;
+        _encryptMacros = settings.EncryptMacros;
         _repeatCount = string.IsNullOrWhiteSpace(settings.RepeatCount) ? "1" : settings.RepeatCount;
         _randomMinMs = string.IsNullOrWhiteSpace(settings.RandomMinMs) ? "1" : settings.RandomMinMs;
         _randomMaxMs = string.IsNullOrWhiteSpace(settings.RandomMaxMs) ? "80" : settings.RandomMaxMs;
@@ -407,6 +412,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(DurationUnitIndex));
         OnPropertyChanged(nameof(RandomizerEnabled));
         OnPropertyChanged(nameof(RelativeMouseMovement));
+        OnPropertyChanged(nameof(EncryptMacros));
         OnPropertyChanged(nameof(RepeatCount));
         OnPropertyChanged(nameof(RandomMinMs));
         OnPropertyChanged(nameof(RandomMaxMs));
@@ -505,6 +511,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 DurationUnitIndex = Math.Clamp(DurationUnitIndex, 0, 1),
                 RandomizerEnabled = RandomizerEnabled,
                 RelativeMouseMovement = RelativeMouseMovement,
+                EncryptMacros = EncryptMacros,
                 RepeatCount = RepeatCount,
                 RandomMinMs = RandomMinMs,
                 RandomMaxMs = RandomMaxMs,
@@ -791,6 +798,46 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         EstimateInvalidated?.Invoke(this, EventArgs.Empty);
     }
 
+    private void EncryptExistingMacros()
+    {
+        if (IsBusy) return;
+
+        int plaintextCount;
+        try
+        {
+            plaintextCount = _storage.CountPlaintextMacros();
+        }
+        catch (Exception)
+        {
+            _dialogs.Show("Die vorhandenen Makrodateien konnten nicht geprüft werden.",
+                "Verschlüsselung nicht möglich", DialogKind.Error);
+            return;
+        }
+
+        if (plaintextCount == 0)
+        {
+            _dialogs.Show("Es wurden keine Klartext-Makros gefunden.",
+                "Keine Migration erforderlich", DialogKind.Information);
+            return;
+        }
+        if (!_dialogs.ConfirmEncryptExistingMacros(plaintextCount)) return;
+
+        MacroMigrationResult result;
+        try
+        {
+            result = _storage.EncryptExistingPlaintextMacros();
+        }
+        catch (Exception)
+        {
+            _dialogs.Show("Die Makrodateien konnten nicht vollständig verarbeitet werden. Nicht ersetzte Dateien bleiben unverändert.",
+                "Makromigration fehlgeschlagen", DialogKind.Error);
+            return;
+        }
+        FooterMessage = $"Makromigration abgeschlossen · {result.Succeeded} erfolgreich, {result.Failed} fehlgeschlagen";
+        _dialogs.Show($"Verschlüsselt: {result.Succeeded}\nFehlgeschlagen: {result.Failed}\n\nFehlgeschlagene Dateien wurden nicht ersetzt.",
+            "Makromigration abgeschlossen", result.Failed == 0 ? DialogKind.Information : DialogKind.Warning);
+    }
+
     private void SetSelectedLibraryItem(MacroDocument? item)
     {
         SetProperty(ref _selectedLibraryItem, item, nameof(SelectedLibraryItem));
@@ -957,6 +1004,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ((RelayCommand)ReloadLibraryCommand).RaiseCanExecuteChanged();
         ((RelayCommand)SaveMacroCommand).RaiseCanExecuteChanged();
         ((RelayCommand)DeleteMacroCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)EncryptExistingMacrosCommand).RaiseCanExecuteChanged();
         ((RelayCommand)PlayCommand).RaiseCanExecuteChanged();
         ((RelayCommand)StopPlaybackCommand).RaiseCanExecuteChanged();
         ((RelayCommand)StartRecordingCommand).RaiseCanExecuteChanged();
