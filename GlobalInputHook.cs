@@ -6,7 +6,7 @@ using System.Windows.Interop;
 namespace MakroWerkstatt;
 
 /// <summary>Listens for system-wide mouse and keyboard input while the user explicitly records.</summary>
-public sealed class GlobalInputHook : IDisposable
+public sealed class GlobalInputHook : IGlobalInputHook
 {
     private const int WhKeyboardLl = 13;
     private const int WhMouseLl = 14;
@@ -55,13 +55,16 @@ public sealed class GlobalInputHook : IDisposable
     private long _rawMoveStartTick;
     private int _pendingRawMoveX;
     private int _pendingRawMoveY;
-    private bool _disposed;
+    private bool _rawInputWindowHookAttached;
+    private int _disposedFlag;
+    private volatile bool _emergencyStopEnabled;
+    private volatile bool _hotkeysEnabled = true;
 
     public event Action<MacroAction>? ActionCaptured;
     public event Action? EmergencyStopPressed;
     public event Action<GlobalHotkeyAction, int[]>? HotkeyPressed;
-    public volatile bool EmergencyStopEnabled;
-    public volatile bool HotkeysEnabled = true;
+    public bool EmergencyStopEnabled { get => _emergencyStopEnabled; set => _emergencyStopEnabled = value; }
+    public bool HotkeysEnabled { get => _hotkeysEnabled; set => _hotkeysEnabled = value; }
     public bool RelativeMouseCaptureAvailable { get; }
 
     public void ConfigureHotkeys(GlobalHotkey recordingHotkey, GlobalHotkey playbackHotkey)
@@ -88,37 +91,50 @@ public sealed class GlobalInputHook : IDisposable
             throw new Win32Exception(error, "Der globale Tastatur-Hook konnte nicht eingerichtet werden.");
         }
 
-        _mouseHook = SetWindowsHookEx(WhMouseLl, _mouseCallback, moduleHandle, 0);
+        try { _mouseHook = SetWindowsHookEx(WhMouseLl, _mouseCallback, moduleHandle, 0); }
+        catch
+        {
+            Dispose();
+            throw;
+        }
         if (_mouseHook == IntPtr.Zero)
         {
             var error = Marshal.GetLastWin32Error();
             FileLogger.Error("GlobalInputHook.SetWindowsHookEx", "MouseHook installation failed", win32ErrorCode: error);
-            if (!UnhookWindowsHookEx(_keyboardHook))
-                FileLogger.Warning("GlobalInputHook.UnhookWindowsHookEx", "KeyboardHook cleanup failed",
-                    win32ErrorCode: Marshal.GetLastWin32Error());
+            Unhook(_keyboardHook, "KeyboardHook cleanup failed");
             _keyboardHook = IntPtr.Zero;
             throw new Win32Exception(error, "Der globale Maus-Hook konnte nicht eingerichtet werden.");
         }
 
-        if (rawInputTarget != IntPtr.Zero && HwndSource.FromHwnd(rawInputTarget) is { } source)
+        try
         {
-            _windowSource = source;
-            _rawInputWindowHook = RawInputWindowProc;
-            source.AddHook(_rawInputWindowHook);
-            var device = new RawInputDevice
+            if (rawInputTarget != IntPtr.Zero && HwndSource.FromHwnd(rawInputTarget) is { } source)
             {
-                UsagePage = 0x01,
-                Usage = 0x02,
-                Flags = RidevInputSink,
-                Target = rawInputTarget
-            };
-            RelativeMouseCaptureAvailable = RegisterRawInputDevices([device], 1, (uint)Marshal.SizeOf<RawInputDevice>());
-            if (!RelativeMouseCaptureAvailable)
-            {
-                FileLogger.Warning("GlobalInputHook.RegisterRawInputDevices", "RawInput registration failed",
-                    win32ErrorCode: Marshal.GetLastWin32Error());
-                source.RemoveHook(_rawInputWindowHook);
+                _windowSource = source;
+                _rawInputWindowHook = RawInputWindowProc;
+                source.AddHook(_rawInputWindowHook);
+                _rawInputWindowHookAttached = true;
+                var device = new RawInputDevice
+                {
+                    UsagePage = 0x01,
+                    Usage = 0x02,
+                    Flags = RidevInputSink,
+                    Target = rawInputTarget
+                };
+                RelativeMouseCaptureAvailable = RegisterRawInputDevices([device], 1, (uint)Marshal.SizeOf<RawInputDevice>());
+                if (!RelativeMouseCaptureAvailable)
+                {
+                    FileLogger.Warning("GlobalInputHook.RegisterRawInputDevices", "RawInput registration failed",
+                        win32ErrorCode: Marshal.GetLastWin32Error());
+                    source.RemoveHook(_rawInputWindowHook);
+                    _rawInputWindowHookAttached = false;
+                }
             }
+        }
+        catch
+        {
+            Dispose();
+            throw;
         }
     }
 
@@ -390,27 +406,42 @@ public sealed class GlobalInputHook : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        if (_keyboardHook != IntPtr.Zero && !UnhookWindowsHookEx(_keyboardHook))
-            FileLogger.Warning("GlobalInputHook.UnhookWindowsHookEx", "KeyboardHook removal failed",
-                win32ErrorCode: Marshal.GetLastWin32Error());
-        if (_mouseHook != IntPtr.Zero && !UnhookWindowsHookEx(_mouseHook))
-            FileLogger.Warning("GlobalInputHook.UnhookWindowsHookEx", "MouseHook removal failed",
-                win32ErrorCode: Marshal.GetLastWin32Error());
-        if (_rawInputWindowHook is not null && _windowSource is not null)
-            _windowSource.RemoveHook(_rawInputWindowHook);
+        if (Interlocked.Exchange(ref _disposedFlag, 1) != 0) return;
+        Unhook(_keyboardHook, "KeyboardHook removal failed");
+        _keyboardHook = IntPtr.Zero;
+        Unhook(_mouseHook, "MouseHook removal failed");
+        _mouseHook = IntPtr.Zero;
+        if (_rawInputWindowHookAttached && _rawInputWindowHook is not null && _windowSource is not null)
+        {
+            try { _windowSource.RemoveHook(_rawInputWindowHook); }
+            catch (Exception ex) { FileLogger.Warning("GlobalInputHook.RemoveHook", "RawInput window hook removal failed", ex); }
+            _rawInputWindowHookAttached = false;
+        }
         if (RelativeMouseCaptureAvailable)
         {
-            var device = new RawInputDevice { UsagePage = 0x01, Usage = 0x02, Flags = RidevRemove, Target = IntPtr.Zero };
-            if (!RegisterRawInputDevices([device], 1, (uint)Marshal.SizeOf<RawInputDevice>()))
-                FileLogger.Warning("GlobalInputHook.RegisterRawInputDevices", "RawInput removal failed",
-                    win32ErrorCode: Marshal.GetLastWin32Error());
+            try
+            {
+                var device = new RawInputDevice { UsagePage = 0x01, Usage = 0x02, Flags = RidevRemove, Target = IntPtr.Zero };
+                if (!RegisterRawInputDevices([device], 1, (uint)Marshal.SizeOf<RawInputDevice>()))
+                    FileLogger.Warning("GlobalInputHook.RegisterRawInputDevices", "RawInput removal failed",
+                        win32ErrorCode: Marshal.GetLastWin32Error());
+            }
+            catch (Exception ex) { FileLogger.Warning("GlobalInputHook.RegisterRawInputDevices", "RawInput removal failed", ex); }
         }
-        _keyboardHook = IntPtr.Zero;
-        _mouseHook = IntPtr.Zero;
         GC.KeepAlive(_keyboardCallback);
         GC.KeepAlive(_mouseCallback);
+    }
+
+    private static void Unhook(IntPtr hook, string message)
+    {
+        if (hook == IntPtr.Zero) return;
+        try
+        {
+            if (!UnhookWindowsHookEx(hook))
+                FileLogger.Warning("GlobalInputHook.UnhookWindowsHookEx", message,
+                    win32ErrorCode: Marshal.GetLastWin32Error());
+        }
+        catch (Exception ex) { FileLogger.Warning("GlobalInputHook.UnhookWindowsHookEx", message, ex); }
     }
 
     private delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);

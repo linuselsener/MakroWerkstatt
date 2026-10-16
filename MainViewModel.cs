@@ -16,6 +16,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 {
     private readonly MacroStorage _storage;
     private readonly IDialogService _dialogs;
+    private readonly IInputCaptureService _inputCaptureService;
     private readonly SynchronizationContext? _uiContext = SynchronizationContext.Current;
     private readonly Stopwatch _recordClock = new();
     private readonly object _settingsSaveLock = new();
@@ -29,6 +30,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private bool _isDirty;
     private bool _currentIsSaved;
     private bool _inputHookAvailable;
+    private bool _relativeMouseCaptureAvailable;
     private string _macroName = "Neue Aufnahme";
     private string _footerMessage = "Bereit";
     private string _playbackDetail = "";
@@ -62,13 +64,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public ICommand DiscardRecordingCommand { get; }
 
     public event EventHandler? EstimateInvalidated;
-    public event EventHandler? FlushPendingMouseMovementRequested;
     public event EventHandler? RecordingStartRequested;
     public event EventHandler? PlaybackStartRequested;
     public event EventHandler? PlaybackStateChanged;
     public event EventHandler? PlaybackFinished;
-    public event Action<bool>? EmergencyStopEnabledChanged;
-    public event EventHandler? HotkeysChanged;
+
+    /// <summary>Allows the view to keep its window-geometry input exclusion while input remains service-driven.</summary>
+    public Func<MacroAction, bool>? ShouldIgnoreCapturedAction { get; set; }
 
     public MacroAction? SelectedAction
     {
@@ -170,6 +172,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    public bool RelativeMouseCaptureAvailable
+    {
+        get => _relativeMouseCaptureAvailable;
+        private set => SetProperty(ref _relativeMouseCaptureAvailable, value);
+    }
+
     public string MacroName
     {
         get => _macroName;
@@ -234,10 +242,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public string MacroCountText => Library.Count == 1 ? "1 Makro" : $"{Library.Count:N0} Makros";
     public string StorageFolderPath => _storage.MacroFolder;
 
-    public MainViewModel(MacroStorage storage, IDialogService dialogs)
+    public MainViewModel(MacroStorage storage, IDialogService dialogs, IInputCaptureService? inputCaptureService = null)
     {
         _storage = storage;
         _dialogs = dialogs;
+        _inputCaptureService = inputCaptureService ?? new InertInputCaptureService();
         RemoveActionCommand = new RelayCommand(RemoveSelectedAction, () => SelectedAction is not null && !IsBusy);
         ReloadLibraryCommand = new RelayCommand(ReloadLibrary, () => !IsBusy);
         SaveMacroCommand = new RelayCommand(() => SaveCurrentMacro(showSuccess: true), CanSaveMacro);
@@ -257,6 +266,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             EstimateInvalidated?.Invoke(this, EventArgs.Empty);
         };
         Library.CollectionChanged += (_, _) => OnPropertyChanged(nameof(MacroCountText));
+        _inputCaptureService.ActionCaptured += InputCaptureService_ActionCaptured;
+        _inputCaptureService.HotkeyPressed += InputCaptureService_HotkeyPressed;
+        _inputCaptureService.EmergencyStopPressed += InputCaptureService_EmergencyStopPressed;
+        _inputCaptureService.StatusChanged += InputCaptureService_StatusChanged;
+        _inputCaptureService.SetHotkeys(_recordingHotkey, _playbackHotkey);
         UpdateEstimate();
     }
 
@@ -400,6 +414,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(PlaybackHotkey));
         OnPropertyChanged(nameof(RecordingHotkeyText));
         OnPropertyChanged(nameof(PlaybackHotkeyText));
+        _inputCaptureService.SetHotkeys(_recordingHotkey, _playbackHotkey);
         UpdateEstimate();
     }
 
@@ -417,7 +432,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(forRecording ? nameof(RecordingHotkeyText) : nameof(PlaybackHotkeyText));
         OnPropertyChanged(forRecording ? nameof(RecordingHotkey) : nameof(PlaybackHotkey));
         FooterMessage = $"Tastenkürzel gespeichert · Aufnahme: {_recordingHotkey}, Wiedergabe: {_playbackHotkey}";
-        HotkeysChanged?.Invoke(this, EventArgs.Empty);
+        _inputCaptureService.SetHotkeys(_recordingHotkey, _playbackHotkey);
         ScheduleSettingsSave();
         return true;
     }
@@ -493,6 +508,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _settingsSaveTimer?.Dispose();
             _settingsSaveTimer = null;
         }
+        _inputCaptureService.ActionCaptured -= InputCaptureService_ActionCaptured;
+        _inputCaptureService.HotkeyPressed -= InputCaptureService_HotkeyPressed;
+        _inputCaptureService.EmergencyStopPressed -= InputCaptureService_EmergencyStopPressed;
+        _inputCaptureService.StatusChanged -= InputCaptureService_StatusChanged;
         _playbackCancellation?.Dispose();
         _playbackCancellation = null;
     }
@@ -630,7 +649,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         Exception? playbackError = null;
         IsPlaying = true;
         PlaybackDetail = "Vorbereitung läuft";
-        EmergencyStopEnabledChanged?.Invoke(true);
+        _inputCaptureService.SetEmergencyStopEnabled(true);
         FooterMessage = "Wiedergabe vorbereitet · Esc stoppt sofort";
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
 
@@ -669,7 +688,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             {
                 FileLogger.Error("MainViewModel.StartPlayback", "Playback input release failed", ex);
             }
-            EmergencyStopEnabledChanged?.Invoke(false);
+            _inputCaptureService.SetEmergencyStopEnabled(false);
             IsPlaying = false;
             _playbackCancellation?.Dispose();
             _playbackCancellation = null;
@@ -789,6 +808,46 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private void InputCaptureService_ActionCaptured(MacroAction action)
+    {
+        if (_disposed || ShouldIgnoreCapturedAction?.Invoke(action) == true) return;
+        CaptureAction(action);
+    }
+
+    private void InputCaptureService_HotkeyPressed(GlobalHotkeyAction action, int[] modifierKeys)
+    {
+        if (_disposed) return;
+        if (IsRecording && modifierKeys.Length > 0)
+            RemoveCapturedShortcutModifiers(modifierKeys);
+
+        if (action == GlobalHotkeyAction.ToggleRecording)
+        {
+            if (IsRecording || IsPaused) StopRecordingCommand.Execute(null);
+            else if (!IsPlaying) StartRecordingCommand.Execute(null);
+            return;
+        }
+
+        if (IsPlaying) StopPlaybackCommand.Execute(null);
+        else if (!IsRecording && !IsPaused) PlayCommand.Execute(null);
+    }
+
+    private void InputCaptureService_EmergencyStopPressed()
+    {
+        if (!_disposed) StopPlaybackCommand.Execute(null);
+    }
+
+    private void InputCaptureService_StatusChanged(InputCaptureStatus status)
+    {
+        if (_disposed) return;
+        InputHookAvailable = status.IsAvailable;
+        RelativeMouseCaptureAvailable = status.RelativeMouseCaptureAvailable;
+        if (!status.IsAvailable) return;
+
+        FooterMessage = status.RelativeMouseCaptureAvailable
+            ? $"Eingabe-Hooks aktiv · Aufnahme {_recordingHotkey}, Wiedergabe {_playbackHotkey}"
+            : "Eingabe-Hooks aktiv · relative Mausaufnahme nicht verfügbar";
+    }
+
     private void StartRecording()
     {
         if (IsBusy) return;
@@ -822,7 +881,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         if (IsRecording)
         {
-            FlushPendingMouseMovementRequested?.Invoke(this, EventArgs.Empty);
+            _inputCaptureService.FlushPendingMouseMovement();
             _recordClock.Stop();
             RecordingState = RecordingState.Paused;
             FooterMessage = "Aufnahme pausiert";
@@ -838,7 +897,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private void StopRecording()
     {
         if (!IsRecording && !IsPaused) return;
-        if (IsRecording) FlushPendingMouseMovementRequested?.Invoke(this, EventArgs.Empty);
+        if (IsRecording) _inputCaptureService.FlushPendingMouseMovement();
         _recordClock.Stop();
         RecordingState = RecordingState.Idle;
         FooterMessage = $"Aufnahme beendet · {Actions.Count:N0} Aktionen noch nicht gespeichert";

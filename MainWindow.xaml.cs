@@ -13,11 +13,10 @@ namespace MakroWerkstatt;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
-    private readonly IUiDispatcher _uiDispatcher;
+    private readonly IInputCaptureService _inputCaptureService;
     public ObservableCollection<MacroAction> Actions => _viewModel.Actions;
 
     private readonly DispatcherTimer _uiTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
-    private GlobalInputHook? _inputHook;
     private string _playbackDetail => _viewModel.PlaybackDetail;
     private string _footerMessage { get => _viewModel.FooterMessage; set => _viewModel.FooterMessage = value; }
     private bool _isRecording => _viewModel.IsRecording;
@@ -31,20 +30,17 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        _uiDispatcher = new WpfUiDispatcher(Dispatcher);
-        _viewModel = new MainViewModel(new MacroStorage(), new WpfDialogService(this));
+        _inputCaptureService = new GlobalInputCaptureService(new WpfUiDispatcher(Dispatcher));
+        _viewModel = new MainViewModel(new MacroStorage(), new WpfDialogService(this), _inputCaptureService)
+        {
+            ShouldIgnoreCapturedAction = ShouldIgnoreOwnWindowAction
+        };
         DataContext = _viewModel;
         _uiTimer.Tick += (_, _) => UpdateActivityDisplay();
         _uiTimer.Start();
         Actions.CollectionChanged += (_, _) => RefreshActionList();
-        _viewModel.FlushPendingMouseMovementRequested += (_, _) => _inputHook?.FlushPendingMouseMovement();
         _viewModel.RecordingStartRequested += (_, _) => CancelHotkeyCapture();
         _viewModel.PlaybackStartRequested += (_, _) => CancelHotkeyCapture();
-        _viewModel.HotkeysChanged += (_, _) => ConfigureHookHotkeys();
-        _viewModel.EmergencyStopEnabledChanged += enabled =>
-        {
-            if (_inputHook is not null) _inputHook.EmergencyStopEnabled = enabled;
-        };
         _viewModel.PlaybackStateChanged += (_, _) =>
         {
             if (_uiReady) UpdateUI();
@@ -78,15 +74,8 @@ public partial class MainWindow : Window
         LoadLibrary(showWarnings: true);
         try
         {
-            _inputHook = new GlobalInputHook(new WindowInteropHelper(this).Handle);
-            _inputHook.ActionCaptured += InputHook_ActionCaptured;
-            _inputHook.EmergencyStopPressed += InputHook_EmergencyStopPressed;
-            _inputHook.HotkeyPressed += InputHook_HotkeyPressed;
-            ConfigureHookHotkeys();
-            _viewModel.InputHookAvailable = true;
-            _footerMessage = _inputHook.RelativeMouseCaptureAvailable
-                ? $"Eingabe-Hooks aktiv · Aufnahme {_viewModel.RecordingHotkey}, Wiedergabe {_viewModel.PlaybackHotkey}"
-                : "Eingabe-Hooks aktiv · relative Mausaufnahme nicht verfügbar";
+            _inputCaptureService.SetRawInputTarget(new WindowInteropHelper(this).Handle);
+            _inputCaptureService.Start();
         }
         catch (Exception ex)
         {
@@ -94,7 +83,7 @@ public partial class MainWindow : Window
             _viewModel.InputHookAvailable = false;
             _footerMessage = "Tastatur-/Maus-Hook nicht verfügbar";
             MessageBox.Show(this,
-                $"Der globale Tastatur- und Maushook konnte nicht gestartet werden. Aufnehmen und Abspielen sind nicht verfügbar.\n\n{ex.Message}",
+                "Der globale Tastatur- und Maushook konnte nicht gestartet werden. Aufnehmen und Abspielen sind nicht verfügbar.",
                 "MakroWerkstatt · Eingabezugriff", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
@@ -106,26 +95,6 @@ public partial class MainWindow : Window
     private void LoadLibrary(bool showWarnings)
     {
         _viewModel.LoadLibrary(showWarnings);
-    }
-
-    private void StopRecording()
-    {
-        _viewModel.StopRecordingCommand.Execute(null);
-        UpdateUI();
-        UpdateEstimate();
-    }
-
-    private void InputHook_ActionCaptured(MacroAction action)
-    {
-        if (!_uiDispatcher.CheckAccess())
-        {
-            _uiDispatcher.Post(() => InputHook_ActionCaptured(action), DispatcherPriority.Input);
-            return;
-        }
-        if (ShouldIgnoreOwnWindowAction(action)) return;
-        _viewModel.CaptureAction(action);
-        UpdateUI();
-        UpdateEstimate();
     }
 
     private bool ShouldIgnoreOwnWindowAction(MacroAction action)
@@ -142,17 +111,12 @@ public partial class MainWindow : Window
         return action.X >= rect.Left && action.X < rect.Right && action.Y >= rect.Top && action.Y < rect.Bottom;
     }
 
-    private void InputHook_EmergencyStopPressed()
-    {
-        _uiDispatcher.Post(StopPlayback, DispatcherPriority.Send);
-    }
-
     private void HotkeyCapture_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button button || _isRecording || _isPaused || _isPlaying) return;
         CancelHotkeyCapture();
         _hotkeyCaptureButton = button;
-        if (_inputHook is not null) _inputHook.HotkeysEnabled = false;
+        _inputCaptureService.SetHotkeysEnabled(false);
         button.SetCurrentValue(ContentControl.ContentProperty, "Jetzt F1–F12 drücken · Esc bricht ab");
         button.Focus();
         _footerMessage = "Tastenkürzel auswählen · Esc bricht die Auswahl ab";
@@ -191,8 +155,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_inputHook is not null)
-            _inputHook.HotkeysEnabled = true;
+        _inputCaptureService.SetHotkeysEnabled(true);
         _hotkeyCaptureButton = null;
         UpdateHotkeyLabels();
         UpdateActivityDisplay();
@@ -202,7 +165,7 @@ public partial class MainWindow : Window
     {
         if (_hotkeyCaptureButton is null) return;
         _hotkeyCaptureButton = null;
-        if (_inputHook is not null) _inputHook.HotkeysEnabled = true;
+        _inputCaptureService.SetHotkeysEnabled(true);
         UpdateHotkeyLabels();
     }
 
@@ -212,33 +175,6 @@ public partial class MainWindow : Window
             RecordHotkeyButton.SetCurrentValue(ContentControl.ContentProperty, _viewModel.RecordingHotkeyText);
         if (PlaybackHotkeyButton is not null)
             PlaybackHotkeyButton.SetCurrentValue(ContentControl.ContentProperty, _viewModel.PlaybackHotkeyText);
-    }
-
-    private void ConfigureHookHotkeys() =>
-        _inputHook?.ConfigureHotkeys(_viewModel.RecordingHotkey, _viewModel.PlaybackHotkey);
-
-    private void InputHook_HotkeyPressed(GlobalHotkeyAction action, int[] modifierKeys)
-    {
-        _uiDispatcher.Post(() =>
-        {
-            if (_isRecording && modifierKeys.Length > 0)
-                _viewModel.RemoveCapturedShortcutModifiers(modifierKeys);
-
-            if (action == GlobalHotkeyAction.ToggleRecording)
-            {
-                if (_isRecording || _isPaused) StopRecording();
-                else if (!_isPlaying)
-                {
-                    CancelHotkeyCapture();
-                    _viewModel.StartRecordingCommand.Execute(null);
-                    UpdateUI();
-                }
-                return;
-            }
-
-            if (_isPlaying) StopPlayback();
-            else if (!_isRecording && !_isPaused) _viewModel.PlayCommand.Execute(null);
-        }, DispatcherPriority.Send);
     }
 
     private void UpdateEstimate() => _viewModel.UpdateEstimate();
@@ -350,10 +286,9 @@ public partial class MainWindow : Window
         }
 
         _viewModel.SaveSettings(showFailure: false);
-        _viewModel.Dispose();
         _uiTimer.Stop();
-        _inputHook?.Dispose();
-        _inputHook = null;
+        _inputCaptureService.Stop();
+        _viewModel.Dispose();
     }
 
     [StructLayout(LayoutKind.Sequential)]
