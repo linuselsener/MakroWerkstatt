@@ -420,6 +420,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     public bool TrySetHotkey(bool forRecording, GlobalHotkey binding)
     {
+        if (!GlobalHotkey.TryCreate(binding.VirtualKey, binding.Modifiers, out var validatedBinding) || validatedBinding is null)
+        {
+            FooterMessage = "Bitte F1 bis F12 drücken, optional mit Ctrl, Alt oder Shift";
+            return false;
+        }
+
+        binding = validatedBinding;
         var other = forRecording ? _playbackHotkey : _recordingHotkey;
         if (binding == other)
         {
@@ -435,6 +442,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _inputCaptureService.SetHotkeys(_recordingHotkey, _playbackHotkey);
         ScheduleSettingsSave();
         return true;
+    }
+
+    public bool TrySetHotkey(bool forRecording, int virtualKey, HotkeyModifiers modifiers)
+    {
+        if (!GlobalHotkey.TryCreate(virtualKey, modifiers, out var binding) || binding is null)
+        {
+            FooterMessage = "Bitte F1 bis F12 drücken, optional mit Ctrl, Alt oder Shift";
+            return false;
+        }
+
+        return TrySetHotkey(forRecording, binding);
     }
 
     public void RemoveCapturedShortcutModifiers(IEnumerable<int> modifierKeys)

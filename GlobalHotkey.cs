@@ -18,6 +18,17 @@ public enum GlobalHotkeyAction
 /// <summary>A configurable global shortcut using one F1–F12 key and optional modifiers.</summary>
 public sealed record GlobalHotkey(int VirtualKey, HotkeyModifiers Modifiers)
 {
+    public static bool TryCreate(int virtualKey, HotkeyModifiers modifiers, out GlobalHotkey? hotkey)
+    {
+        const HotkeyModifiers supportedModifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt | HotkeyModifiers.Shift;
+        hotkey = null;
+        if (virtualKey is < 0x70 or > 0x7b || (modifiers & ~supportedModifiers) != 0)
+            return false;
+
+        hotkey = new GlobalHotkey(virtualKey, modifiers);
+        return true;
+    }
+
     public static bool TryParse(string? value, out GlobalHotkey? hotkey)
     {
         hotkey = null;

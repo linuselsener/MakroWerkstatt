@@ -129,4 +129,25 @@ public sealed class MainViewModelTests
         Assert.Empty(viewModel.Library);
         Assert.Null(viewModel.CurrentMacro);
     }
+
+    [Fact]
+    public void Hotkey_capture_validates_function_keys_and_rejects_conflicts()
+    {
+        using var context = new TestContext();
+        using var viewModel = new MainViewModel(context.Storage, new FakeDialogService());
+        var originalRecordingHotkey = viewModel.RecordingHotkey;
+
+        Assert.False(viewModel.TrySetHotkey(forRecording: true, virtualKey: 0x41, HotkeyModifiers.None));
+        Assert.Equal(originalRecordingHotkey, viewModel.RecordingHotkey);
+        Assert.Equal("Bitte F1 bis F12 drücken, optional mit Ctrl, Alt oder Shift", viewModel.FooterMessage);
+
+        Assert.False(viewModel.TrySetHotkey(forRecording: true,
+            viewModel.PlaybackHotkey.VirtualKey, viewModel.PlaybackHotkey.Modifiers));
+        Assert.Equal(originalRecordingHotkey, viewModel.RecordingHotkey);
+
+        Assert.True(viewModel.TrySetHotkey(forRecording: true, virtualKey: 0x70,
+            HotkeyModifiers.Control | HotkeyModifiers.Shift));
+        Assert.Equal(new GlobalHotkey(0x70, HotkeyModifiers.Control | HotkeyModifiers.Shift),
+            viewModel.RecordingHotkey);
+    }
 }

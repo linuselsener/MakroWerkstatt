@@ -135,21 +135,13 @@ public partial class MainWindow : Window
             UpdateActivityDisplay();
             return;
         }
-        if ((int)key < (int)Key.F1 || (int)key > (int)Key.F12)
-        {
-            _footerMessage = "Bitte F1 bis F12 drücken, optional mit Ctrl, Alt oder Shift";
-            UpdateActivityDisplay();
-            return;
-        }
-
         var modifiers = HotkeyModifiers.None;
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) modifiers |= HotkeyModifiers.Control;
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) modifiers |= HotkeyModifiers.Alt;
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) modifiers |= HotkeyModifiers.Shift;
         var keyCode = KeyInterop.VirtualKeyFromKey(key);
-        var binding = new GlobalHotkey(keyCode, modifiers);
         var isRecordingBinding = _hotkeyCaptureButton == RecordHotkeyButton;
-        if (!_viewModel.TrySetHotkey(isRecordingBinding, binding))
+        if (!_viewModel.TrySetHotkey(isRecordingBinding, keyCode, modifiers))
         {
             UpdateActivityDisplay();
             return;
