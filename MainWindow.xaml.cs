@@ -13,6 +13,7 @@ namespace MakroWerkstatt;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
+    private readonly IUiDispatcher _uiDispatcher;
     public ObservableCollection<MacroAction> Actions => _viewModel.Actions;
 
     private readonly DispatcherTimer _uiTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
@@ -30,6 +31,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _uiDispatcher = new WpfUiDispatcher(Dispatcher);
         _viewModel = new MainViewModel(new MacroStorage(), new WpfDialogService(this));
         DataContext = _viewModel;
         _uiTimer.Tick += (_, _) => UpdateActivityDisplay();
@@ -115,9 +117,9 @@ public partial class MainWindow : Window
 
     private void InputHook_ActionCaptured(MacroAction action)
     {
-        if (!Dispatcher.CheckAccess())
+        if (!_uiDispatcher.CheckAccess())
         {
-            _ = Dispatcher.BeginInvoke(() => InputHook_ActionCaptured(action), DispatcherPriority.Input);
+            _uiDispatcher.Post(() => InputHook_ActionCaptured(action), DispatcherPriority.Input);
             return;
         }
         if (ShouldIgnoreOwnWindowAction(action)) return;
@@ -142,7 +144,7 @@ public partial class MainWindow : Window
 
     private void InputHook_EmergencyStopPressed()
     {
-        _ = Dispatcher.BeginInvoke(new Action(StopPlayback), DispatcherPriority.Send);
+        _uiDispatcher.Post(StopPlayback, DispatcherPriority.Send);
     }
 
     private void HotkeyCapture_Click(object sender, RoutedEventArgs e)
@@ -217,7 +219,7 @@ public partial class MainWindow : Window
 
     private void InputHook_HotkeyPressed(GlobalHotkeyAction action, int[] modifierKeys)
     {
-        _ = Dispatcher.BeginInvoke(new Action(() =>
+        _uiDispatcher.Post(() =>
         {
             if (_isRecording && modifierKeys.Length > 0)
                 _viewModel.RemoveCapturedShortcutModifiers(modifierKeys);
@@ -236,7 +238,7 @@ public partial class MainWindow : Window
 
             if (_isPlaying) StopPlayback();
             else if (!_isRecording && !_isPaused) _viewModel.PlayCommand.Execute(null);
-        }), DispatcherPriority.Send);
+        }, DispatcherPriority.Send);
     }
 
     private void UpdateEstimate() => _viewModel.UpdateEstimate();
