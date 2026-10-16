@@ -407,16 +407,6 @@ public sealed class GlobalInputHook : IGlobalInputHook
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposedFlag, 1) != 0) return;
-        Unhook(_keyboardHook, "KeyboardHook removal failed");
-        _keyboardHook = IntPtr.Zero;
-        Unhook(_mouseHook, "MouseHook removal failed");
-        _mouseHook = IntPtr.Zero;
-        if (_rawInputWindowHookAttached && _rawInputWindowHook is not null && _windowSource is not null)
-        {
-            try { _windowSource.RemoveHook(_rawInputWindowHook); }
-            catch (Exception ex) { FileLogger.Warning("GlobalInputHook.RemoveHook", "RawInput window hook removal failed", ex); }
-            _rawInputWindowHookAttached = false;
-        }
         if (RelativeMouseCaptureAvailable)
         {
             try
@@ -428,6 +418,16 @@ public sealed class GlobalInputHook : IGlobalInputHook
             }
             catch (Exception ex) { FileLogger.Warning("GlobalInputHook.RegisterRawInputDevices", "RawInput removal failed", ex); }
         }
+        if (_rawInputWindowHookAttached && _rawInputWindowHook is not null && _windowSource is not null)
+        {
+            try { _windowSource.RemoveHook(_rawInputWindowHook); }
+            catch (Exception ex) { FileLogger.Warning("GlobalInputHook.RemoveHook", "RawInput window hook removal failed", ex); }
+            _rawInputWindowHookAttached = false;
+        }
+        Unhook(_mouseHook, "MouseHook removal failed");
+        _mouseHook = IntPtr.Zero;
+        Unhook(_keyboardHook, "KeyboardHook removal failed");
+        _keyboardHook = IntPtr.Zero;
         GC.KeepAlive(_keyboardCallback);
         GC.KeepAlive(_mouseCallback);
     }

@@ -120,10 +120,13 @@ public sealed class InputCaptureServiceTests
         var captured = 0;
         var emergencies = 0;
         var hotkeys = 0;
+        InputCaptureStatus? status = null;
         service.ActionCaptured += _ => captured++;
         service.EmergencyStopPressed += () => emergencies++;
         service.HotkeyPressed += (_, _) => hotkeys++;
+        service.StatusChanged += value => status = value;
         service.Start();
+        Assert.Equal(new InputCaptureStatus(true, true), status);
 
         dispatcher.HasAccess = false;
         hook.EmitAction(new MacroAction { Type = MacroActionType.MouseMove, X = 3, Y = 4 });
@@ -149,6 +152,20 @@ public sealed class InputCaptureServiceTests
         service.Dispose();
         service.Dispose();
         service.Stop();
+
+        Assert.Equal(1, hook.DisposeCount);
+    }
+
+    [Fact]
+    public void Startup_failure_disposes_the_partially_started_hook_once()
+    {
+        var dispatcher = new ImmediateDispatcher();
+        var hook = new FakeGlobalInputHook { ThrowOnConfigure = true };
+        var service = new GlobalInputCaptureService(dispatcher, _ => hook);
+
+        Assert.Throws<InvalidOperationException>(service.Start);
+        service.Stop();
+        service.Dispose();
 
         Assert.Equal(1, hook.DisposeCount);
     }

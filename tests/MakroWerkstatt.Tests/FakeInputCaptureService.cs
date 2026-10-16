@@ -80,12 +80,16 @@ internal sealed class FakeGlobalInputHook : IGlobalInputHook
     public bool EmergencyStopEnabled { get; set; }
     public bool HotkeysEnabled { get; set; } = true;
     public bool RelativeMouseCaptureAvailable { get; set; } = true;
+    public bool ThrowOnConfigure { get; set; }
     public int DisposeCount { get; private set; }
     public int FlushCount { get; private set; }
     public (GlobalHotkey Recording, GlobalHotkey Playback)? Hotkeys { get; private set; }
 
-    public void ConfigureHotkeys(GlobalHotkey recordingHotkey, GlobalHotkey playbackHotkey) =>
+    public void ConfigureHotkeys(GlobalHotkey recordingHotkey, GlobalHotkey playbackHotkey)
+    {
+        if (ThrowOnConfigure) throw new InvalidOperationException("Synthetic configuration failure.");
         Hotkeys = (recordingHotkey, playbackHotkey);
+    }
 
     public void FlushPendingMouseMovement() => FlushCount++;
 
