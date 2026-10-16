@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private bool _uiReady;
     private bool _closeWhenPlaybackEnds;
     private bool _allowClose;
+    private bool _shutdownCompleted;
     private Button? _hotkeyCaptureButton;
 
     public MainWindow()
@@ -261,6 +262,8 @@ public partial class MainWindow : Window
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        if (_shutdownCompleted) return;
+
         if (_isPlaying && !_allowClose)
         {
             e.Cancel = true;
@@ -281,6 +284,7 @@ public partial class MainWindow : Window
         _uiTimer.Stop();
         _inputCaptureService.Stop();
         _viewModel.Dispose();
+        _shutdownCompleted = true;
     }
 
     [StructLayout(LayoutKind.Sequential)]
