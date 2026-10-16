@@ -1,0 +1,65 @@
+{
+  "formatVersion": 2,
+  "application": "MakroWerkstatt",
+  "id": "f7d799f1-5f96-4aa6-a963-b1ecc0b22ef5",
+  "name": "Beispiel: relative Mausbewegung",
+  "createdUtc": "2026-10-16T10:00:00+00:00",
+  "updatedUtc": "2026-10-16T10:00:02+00:00",
+  "actions": [
+    {
+      "atMs": 0,
+      "type": "keyDown",
+      "x": 0,
+      "y": 0,
+      "keyCode": 87,
+      "scanCode": 17,
+      "rawFlags": 0,
+      "wheelDelta": 0,
+      "button": ""
+    },
+    {
+      "atMs": 120,
+      "type": "mouseMoveRelative",
+      "x": 24,
+      "y": -3,
+      "keyCode": 0,
+      "scanCode": 0,
+      "rawFlags": 0,
+      "wheelDelta": 0,
+      "button": ""
+    },
+    {
+      "atMs": 260,
+      "type": "mouseButtonDown",
+      "x": 960,
+      "y": 540,
+      "keyCode": 0,
+      "scanCode": 0,
+      "rawFlags": 0,
+      "wheelDelta": 0,
+      "button": "Left"
+    },
+    {
+      "atMs": 340,
+      "type": "mouseButtonUp",
+      "x": 960,
+      "y": 540,
+      "keyCode": 0,
+      "scanCode": 0,
+      "rawFlags": 0,
+      "wheelDelta": 0,
+      "button": "Left"
+    },
+    {
+      "atMs": 500,
+      "type": "keyUp",
+      "x": 0,
+      "y": 0,
+      "keyCode": 87,
+      "scanCode": 17,
+      "rawFlags": 128,
+      "wheelDelta": 0,
+      "button": ""
+    }
+  ]
+}

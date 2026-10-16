@@ -1,0 +1,324 @@
+<Window x:Class="MakroWerkstatt.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MakroWerkstatt" Height="900" Width="1440" MinHeight="760" MinWidth="1120"
+        Background="{StaticResource Canvas}" WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI" FontSize="13" Foreground="{StaticResource Ink}"
+        Loaded="Window_Loaded" Closing="Window_Closing" PreviewKeyDown="HotkeyCapture_PreviewKeyDown">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="76" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="30" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#14243A">
+            <Grid Margin="26,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Width="40" Height="40" CornerRadius="11" Background="#246BFD" VerticalAlignment="Center">
+                    <TextBlock Text="⌁" FontSize="31" FontWeight="Bold" Foreground="White"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0" />
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="13,0,0,0">
+                    <TextBlock Text="MakroWerkstatt" FontSize="18" FontWeight="Bold" Foreground="White" />
+                    <TextBlock Text="MAKROS LOKAL AUFZEICHNEN UND WIEDERGEBEN" FontSize="9" FontWeight="SemiBold"
+                               Foreground="#91A3BA" Margin="1,3,0,0" />
+                </StackPanel>
+                <Border Grid.Column="2" Background="#203650" CornerRadius="7" Padding="11,7" VerticalAlignment="Center" Margin="0,0,12,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="7" Height="7" Fill="#54D4A4" Margin="0,0,8,0" VerticalAlignment="Center" />
+                        <TextBlock Text="100 % lokal" Foreground="#D5E3F2" FontSize="11" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Border>
+                <Border x:Name="StatusBadgeBorder" Grid.Column="3" Background="#273951" CornerRadius="7" Padding="12,7" VerticalAlignment="Center" MinWidth="116">
+                    <TextBlock x:Name="StatusText" Text="BEREIT" Foreground="#DAE4EF" FontSize="10" FontWeight="Bold"
+                               HorizontalAlignment="Center" />
+                </Border>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="286" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="#1A2B43">
+                <Grid Margin="20,23,18,17">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="MAKRO-BIBLIOTHEK" FontSize="10" FontWeight="Bold" Foreground="#90A3BB" />
+                    <Grid Grid.Row="1" Margin="0,11,0,18">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock x:Name="MacroCountText" Text="{Binding MacroCountText}" Foreground="White" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="↻" Padding="9,5" FontSize="16" ToolTip="Bibliothek neu laden"
+                                Command="{Binding ReloadLibraryCommand}" Background="#263A54" Foreground="White" BorderBrush="#354A65" />
+                    </Grid>
+                    <Button x:Name="NewRecordingButton" Grid.Row="2" Content="●   Neue Aufnahme" Style="{StaticResource RecordButton}"
+                            HorizontalContentAlignment="Center" Padding="12,12" Margin="0,0,0,16" Command="{Binding StartRecordingCommand}" />
+                    <ListBox x:Name="MacroListBox" Grid.Row="3" ItemsSource="{Binding Library}" SelectedItem="{Binding SelectedLibraryItem, Mode=TwoWay}"
+                             Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="Margin" Value="0,0,0,7" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="BorderThickness" Value="0" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="ItemBorder" Background="Transparent" CornerRadius="9" Padding="10,11">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="ItemBorder" Property="Background" Value="#2D4665" />
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="ItemBorder" Property="Background" Value="#263D5A" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="33" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <Border Width="30" Height="30" CornerRadius="8" Background="#304B6C" VerticalAlignment="Top">
+                                        <TextBlock Text="↗" Foreground="#90B9FF" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="9,0,0,0">
+                                        <TextBlock Text="{Binding Name}" Foreground="#F2F6FC" FontWeight="SemiBold" FontSize="12"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding ActionSummary}" Foreground="#A7B7CA" FontSize="10" Margin="0,4,0,0" />
+                                        <TextBlock Text="{Binding UpdatedLocalText}" Foreground="#8297B0" FontSize="9" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <Border Grid.Row="4" Background="#223852" CornerRadius="9" Padding="12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="DATENSCHUTZ" Foreground="#8EA6C1" FontSize="9" FontWeight="Bold" />
+                            <TextBlock Text="Makros und Einstellungen bleiben auf diesem PC. Tastatureingaben können vertrauliche Texte enthalten."
+                                       Foreground="#D5E0ED" FontSize="10" TextWrapping="Wrap" Margin="0,7,0,0" LineHeight="15" />
+                            <TextBlock x:Name="StoragePathText" Text="{Binding StorageFolderPath}" Foreground="#8EA6C1"
+                                       FontSize="9" TextWrapping="Wrap" Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <Border x:Name="ActivityBanner" Grid.Row="0" CornerRadius="10" Padding="13,10" Margin="28,17,30,0"
+                        Background="#EAF1FA" BorderBrush="#D7E3F2" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <Ellipse x:Name="ActivityDot" Width="9" Height="9" Fill="#8EA2BB" VerticalAlignment="Center" Margin="0,0,10,0" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="ActivityStatusText" Text="Bereit für eine neue Sequenz" FontSize="11" FontWeight="SemiBold" />
+                            <TextBlock x:Name="ActivityHintText" Text="  ·  Die Aufnahme startet erst nach deinem Klick auf „Neue Aufnahme“."
+                                       FontSize="10" Foreground="{StaticResource Muted}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="ActivityTimerText" Text="00:00" FontSize="11" FontWeight="Bold" FontFamily="Consolas"
+                                       VerticalAlignment="Center" Margin="0,0,10,0" Visibility="Collapsed" />
+                            <Button x:Name="PauseRecordingButton" Content="Ⅱ  Pause" Padding="9,5" FontSize="10"
+                                    Command="{Binding ToggleRecordingPauseCommand}" Margin="0,0,6,0" Visibility="Collapsed" />
+                            <Button x:Name="DiscardRecordingButton" Content="Aufnahme löschen" Style="{StaticResource DangerOutlineButton}"
+                                    Padding="9,5" FontSize="10" Command="{Binding DiscardRecordingCommand}" Visibility="Collapsed" />
+                            <Button x:Name="StopPlaybackButton" Content="■  Wiedergabe stoppen  ·  Esc" Command="{Binding StopPlaybackCommand}"
+                                    Style="{StaticResource DangerOutlineButton}" Padding="9,5" FontSize="10" Visibility="Collapsed" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <Grid Margin="28,22,30,24">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,17">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Dein Ablauf" FontSize="24" FontWeight="Bold" Foreground="{StaticResource Ink}" />
+                            <TextBlock Text="Aktionen ansehen, bearbeiten und mit kontrolliertem Timing abspielen."
+                                       FontSize="12" Foreground="{StaticResource Muted}" Margin="1,5,0,0" />
+                            <TextBox x:Name="MacroNameBox" Text="{Binding MacroName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="260" HorizontalAlignment="Left" Margin="0,10,0,0"
+                                     ToolTip="Name des Makros" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="Aufnahme stoppen" x:Name="StopRecordingButton" Command="{Binding StopRecordingCommand}"
+                                    Style="{StaticResource DangerOutlineButton}" Margin="0,0,8,0" />
+                            <Button Content="Aufnahme speichern" x:Name="SaveMacroButton" Command="{Binding SaveMacroCommand}" />
+                            <Button Content="Makro löschen" x:Name="DeleteMacroButton" Command="{Binding DeleteMacroCommand}"
+                                    Style="{StaticResource DangerOutlineButton}" Margin="0,0,0,0" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0" Margin="0,0,0,15">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                            <Grid Margin="17,13,17,10">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="AKTIONSVERLAUF" FontSize="10" FontWeight="Bold" Foreground="#52647A" />
+                                    <TextBlock x:Name="ActionCountText" Text="{Binding ActionCountText}" FontSize="10" Foreground="{StaticResource Muted}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="Zeitstempel  ·  Reihenfolge bleibt erhalten" FontSize="10"
+                                           Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,14,0" />
+                                <Button x:Name="RemoveActionButton" Grid.Column="2" Content="Auswahl entfernen" Padding="9,5" FontSize="10"
+                                        Command="{Binding RemoveActionCommand}" />
+                            </Grid>
+                            <Grid Grid.Row="1">
+                              <ListView x:Name="ActionListView" ItemsSource="{Binding Actions}" SelectedItem="{Binding SelectedAction, Mode=TwoWay}"
+                                        Margin="2,0,2,3" Height="230">
+                                <ListView.View>
+                                    <GridView AllowsColumnReorder="False">
+                                        <GridViewColumn Header="ZEIT" Width="105" DisplayMemberBinding="{Binding DisplayTime}" />
+                                        <GridViewColumn Header="AKTION" Width="190" DisplayMemberBinding="{Binding DisplayType}" />
+                                        <GridViewColumn Header="DETAILS" Width="380" DisplayMemberBinding="{Binding DisplayDetails}" />
+                                    </GridView>
+                                </ListView.View>
+                              </ListView>
+                              <StackPanel x:Name="EmptyActionsPanel" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                                  <TextBlock Text="Noch keine Aktionen" HorizontalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="#68798E" />
+                                  <TextBlock Text="Starte eine Aufnahme oder öffne ein Makro aus der Bibliothek."
+                                             HorizontalAlignment="Center" FontSize="10" Foreground="#8A99AB" Margin="0,5,0,0" />
+                              </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="2" Margin="0,0,0,15">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="1.1*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="1*" /></Grid.ColumnDefinitions>
+                        <Border Style="{StaticResource Card}">
+                            <Grid>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Width="29" Height="29" CornerRadius="8" Background="#EAF1FF">
+                                        <TextBlock Text="↔" FontSize="17" Foreground="#246BFD" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <StackPanel Margin="9,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Wiedergabe-Timing" FontSize="13" FontWeight="Bold" />
+                                        <TextBlock Text="Zieldauer und Wiederholungen pro Wiedergabe einstellen." FontSize="10" Foreground="{StaticResource Muted}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <CheckBox x:Name="StretchCheckBox" Grid.Row="1" Content="Streckmodus auf Zielzeit"
+                                          IsChecked="{Binding StretchEnabled, Mode=TwoWay}" Margin="0,16,0,8" />
+                                <StackPanel Grid.Row="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Zieldauer" FontSize="11" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                    <TextBox x:Name="DurationTextBox" Width="78" Text="{Binding Duration, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextAlignment="Right" Margin="0,0,8,0" />
+                                    <ComboBox x:Name="DurationUnitComboBox" Width="106" VerticalContentAlignment="Center"
+                                              SelectedIndex="{Binding DurationUnitIndex, Mode=TwoWay}">
+                                        <ComboBoxItem Content="Minuten" />
+                                        <ComboBoxItem Content="Stunden" />
+                                    </ComboBox>
+                                </StackPanel>
+                                <TextBlock Grid.Row="3" Text="Die Zieldauer gilt je Durchlauf. Die Aktionsreihenfolge bleibt dabei erhalten."
+                                           FontSize="10" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,10,0,0" LineHeight="15" />
+                                <StackPanel Grid.Row="4" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,12,0,0">
+                                    <TextBlock Text="Durchläufe pro Wiedergabe" FontSize="11" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                    <TextBox x:Name="RepeatCountTextBox" Width="56" Text="{Binding RepeatCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextAlignment="Right"
+                                             ToolTip="Anzahl der Durchläufe (1 bis 100)" />
+                                </StackPanel>
+                                <CheckBox x:Name="RelativeMouseCheckBox" Grid.Row="5" Content="Relative Mausbewegung für Spiele" Margin="0,12,0,4"
+                                          IsChecked="{Binding RelativeMouseMovement, Mode=TwoWay}" />
+                                <TextBlock Grid.Row="6" Text="Nimmt Maus-Deltas direkt auf und spielt sie relativ ab. Minecraft kann synthetische Mausbewegungen je nach Version trotzdem ignorieren."
+                                           FontSize="10" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,2,0,0" LineHeight="15" />
+                            </Grid>
+                        </Border>
+                        <Border Grid.Column="2" Style="{StaticResource Card}">
+                            <Grid>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Width="29" Height="29" CornerRadius="8" Background="#E9F8F2">
+                                        <TextBlock Text="⌁" FontSize="18" Foreground="#1C9B70" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <StackPanel Margin="9,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Randomizer" FontSize="13" FontWeight="Bold" />
+                                        <TextBlock Text="Variiert nur die Wartezeit zwischen Aktionen." FontSize="10" Foreground="{StaticResource Muted}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <CheckBox x:Name="RandomizerCheckBox" Grid.Row="1" Content="Zufällige Zusatzverzögerung" Margin="0,16,0,8"
+                                          IsChecked="{Binding RandomizerEnabled, Mode=TwoWay}" />
+                                <StackPanel Grid.Row="2" Orientation="Horizontal">
+                                    <TextBlock Text="Min." FontSize="10" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <TextBox x:Name="RandomMinTextBox" Width="56" Text="{Binding RandomMinMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextAlignment="Right" Margin="0,0,12,0" />
+                                    <TextBlock Text="Max." FontSize="10" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <TextBox x:Name="RandomMaxTextBox" Width="58" Text="{Binding RandomMaxMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextAlignment="Right" Margin="0,0,5,0" />
+                                    <TextBlock Text="ms" FontSize="10" Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock Grid.Row="3" Text="Zufallswartezeiten werden zusätzlich eingefügt. Sie können die Zielzeit daher leicht überschreiten; die Schätzung berücksichtigt die gewählte Spanne."
+                                           FontSize="10" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,10,0,0" LineHeight="15" />
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,0,0,15">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Globale Tastenkürzel" FontSize="13" FontWeight="Bold" />
+                                <TextBlock Text="Funktioniert auch bei aktivem anderem Fenster. Erneut drücken stoppt; mit Ctrl, Alt oder Shift kombinierbar. Die Kürzel werden nicht mit aufgezeichnet."
+                                           FontSize="10" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,4,16,0" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="0,0,14,0" MinWidth="145">
+                                <TextBlock Text="AUFNAHME STARTEN / STOPPEN" FontSize="9" FontWeight="Bold" Foreground="{StaticResource Muted}" Margin="0,0,0,5" />
+                                <Button x:Name="RecordHotkeyButton" Content="{Binding RecordingHotkeyText}" Click="HotkeyCapture_Click"
+                                        Padding="12,7" MinWidth="125" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" MinWidth="160">
+                                <TextBlock Text="WIEDERGABE STARTEN / STOPPEN" FontSize="9" FontWeight="Bold" Foreground="{StaticResource Muted}" Margin="0,0,0,5" />
+                                <Button x:Name="PlaybackHotkeyButton" Content="{Binding PlaybackHotkeyText}" Click="HotkeyCapture_Click"
+                                        Padding="12,7" MinWidth="140" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="4">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                        <TextBlock x:Name="EstimateText" Text="{Binding EstimateText}" FontWeight="SemiBold" FontSize="12" />
+                        <TextBlock x:Name="EstimateDetailText" Text="{Binding EstimateDetailText}" Foreground="{StaticResource Muted}" FontSize="10" Margin="0,3,0,0" />
+                        </StackPanel>
+                        <Button x:Name="PlayButton" Grid.Column="1" Content="▶   Wiedergabe starten" Style="{StaticResource PrimaryButton}"
+                                Padding="17,12" Command="{Binding PlayCommand}" />
+                    </Grid>
+                </Grid>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+
+        <Border Grid.Row="2" Background="#E8EDF4" BorderBrush="#DCE3EC" BorderThickness="0,1,0,0">
+            <Grid Margin="24,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock Text="Lokaler Desktop-Modus · Keine Netzwerkverbindung erforderlich" FontSize="10" Foreground="#718096" VerticalAlignment="Center" />
+                <TextBlock x:Name="FooterStatusText" Grid.Column="1" Text="Bereit" FontSize="10" Foreground="#718096" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

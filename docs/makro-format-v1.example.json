@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "application": "MakroWerkstatt",
+  "id": "9a5d94c8-3739-4e59-9671-95191005bc9b",
+  "name": "Beispiel: Taste A",
+  "createdUtc": "2026-10-16T10:00:00+00:00",
+  "updatedUtc": "2026-10-16T10:00:02+00:00",
+  "actions": [
+    {
+      "atMs": 0,
+      "type": "keyDown",
+      "x": 0,
+      "y": 0,
+      "keyCode": 65,
+      "scanCode": 30,
+      "rawFlags": 0,
+      "wheelDelta": 0,
+      "button": ""
+    },
+    {
+      "atMs": 120,
+      "type": "keyUp",
+      "x": 0,
+      "y": 0,
+      "keyCode": 65,
+      "scanCode": 30,
+      "rawFlags": 128,
+      "wheelDelta": 0,
+      "button": ""
+    }
+  ]
+}
