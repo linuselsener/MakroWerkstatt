@@ -482,6 +482,12 @@ public sealed class MacroStorage
         return true;
     }
 
+    internal static void ValidateDocument(MacroDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        Validate(document);
+    }
+
     private static void Validate(MacroDocument document)
     {
         if (document.Id == Guid.Empty)
