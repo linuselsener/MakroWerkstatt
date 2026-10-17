@@ -74,6 +74,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public ICommand DeleteActionsCommand { get; }
     public ICommand MoveActionUpCommand { get; }
     public ICommand MoveActionDownCommand { get; }
+    public ICommand MoveSelectionToIndexCommand { get; }
     public ICommand DuplicateActionsCommand { get; }
     public ICommand InsertPauseCommand { get; }
     public ICommand UndoActionEditCommand { get; }
@@ -352,6 +353,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         DeleteActionsCommand = RemoveActionCommand;
         MoveActionUpCommand = new RelayCommand(() => MoveSelectedActions(moveUp: true), CanMoveSelectedActionsUp);
         MoveActionDownCommand = new RelayCommand(() => MoveSelectedActions(moveUp: false), CanMoveSelectedActionsDown);
+        MoveSelectionToIndexCommand = new RelayCommand(MoveSelectionToIndex, CanMoveSelectionToIndex);
         DuplicateActionsCommand = new RelayCommand(DuplicateSelectedActions, () => CanEditActions && SelectedActions.Count > 0
             && Actions.Count + SelectedActions.Count <= MacroStorage.MaximumActionCount);
         InsertPauseCommand = new RelayCommand(InsertPause, CanInsertPause);
@@ -1434,6 +1436,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private bool CanMoveSelectedActionsDown() => CanEditActions && _macroEditService.CanMove(SelectedActionIndices(), moveUp: false);
 
+    private bool CanMoveSelectionToIndex(object? parameter) =>
+        CanEditActions && parameter is int targetIndex
+        && _macroEditService.CanMoveTo(SelectedActionIndices(), targetIndex);
+
+    private void MoveSelectionToIndex(object? parameter)
+    {
+        if (!CanEditActions || parameter is not int targetIndex) return;
+        _macroEditService.UpdateDocument(CurrentMacro!);
+        if (!_macroEditService.MoveTo(SelectedActionIndices(), targetIndex)) return;
+        CompleteActionEdit("Aktionen verschoben");
+    }
+
     private bool CanInsertPause() => CanEditActions && SelectedAction is not null
         && Actions.IndexOf(SelectedAction) >= 0 && Actions.IndexOf(SelectedAction) < Actions.Count - 1;
 
@@ -1643,6 +1657,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ((RelayCommand)RemoveActionCommand).RaiseCanExecuteChanged();
         ((RelayCommand)MoveActionUpCommand).RaiseCanExecuteChanged();
         ((RelayCommand)MoveActionDownCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)MoveSelectionToIndexCommand).RaiseCanExecuteChanged();
         ((RelayCommand)DuplicateActionsCommand).RaiseCanExecuteChanged();
         ((RelayCommand)InsertPauseCommand).RaiseCanExecuteChanged();
         ((RelayCommand)UndoActionEditCommand).RaiseCanExecuteChanged();

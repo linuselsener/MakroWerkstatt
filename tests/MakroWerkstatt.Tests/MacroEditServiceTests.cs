@@ -28,6 +28,76 @@ public sealed class MacroEditServiceTests
     }
 
     [Fact]
+    public void Move_to_reorders_single_actions_at_the_beginning_and_end_without_moving_timestamps()
+    {
+        var service = CreateService(MarkerMove(0, 0), MarkerMove(10, 1), MarkerMove(20, 2), MarkerMove(30, 3));
+
+        Assert.True(service.CanMoveTo([1], 4));
+        Assert.True(service.MoveTo([1], 4));
+        Assert.True(service.Actions.Select(action => action.X).SequenceEqual([0, 2, 3, 1]));
+        Assert.True(service.Actions.Select(action => action.AtMs).SequenceEqual([0L, 10L, 20L, 30L]));
+
+        Assert.True(service.MoveTo([3], 0));
+        Assert.True(service.Actions.Select(action => action.X).SequenceEqual([1, 0, 2, 3]));
+        Assert.True(service.Actions.Select(action => action.AtMs).SequenceEqual([0L, 10L, 20L, 30L]));
+    }
+
+    [Fact]
+    public void Move_to_keeps_multiple_selected_actions_and_input_pairs_in_relative_order()
+    {
+        var service = CreateService(
+            MarkerMove(0, 0), KeyDown(10), ButtonDown(15), MarkerMove(20, 3),
+            KeyUp(30), ButtonUp(35), MarkerMove(40, 6), Wheel(50));
+
+        Assert.True(service.MoveTo([1, 2], 8));
+
+        Assert.True(service.Actions.Select(action => action.Type).SequenceEqual(
+            [MacroActionType.MouseMove, MacroActionType.MouseMove, MacroActionType.MouseMove,
+             MacroActionType.MouseWheel, MacroActionType.KeyDown, MacroActionType.MouseButtonDown,
+             MacroActionType.KeyUp, MacroActionType.MouseButtonUp]));
+        Assert.True(service.Actions.Where(action => action.Type is MacroActionType.KeyDown or MacroActionType.KeyUp)
+            .Select(action => action.Type).SequenceEqual([MacroActionType.KeyDown, MacroActionType.KeyUp]));
+        Assert.True(service.Actions.Where(action => action.Type is MacroActionType.MouseButtonDown or MacroActionType.MouseButtonUp)
+            .Select(action => action.Type).SequenceEqual([MacroActionType.MouseButtonDown, MacroActionType.MouseButtonUp]));
+        Assert.True(service.Actions.Select(action => action.AtMs).SequenceEqual([0L, 10L, 15L, 20L, 30L, 35L, 40L, 50L]));
+        Assert.True(service.LastSelectionIndices.SequenceEqual([4, 5, 6, 7]));
+        AssertNoHeldInputs(service.Actions);
+    }
+
+    [Fact]
+    public void Move_to_no_op_and_invalid_targets_do_not_add_history_or_change_actions()
+    {
+        var service = CreateService(MarkerMove(0, 0), MarkerMove(10, 1), MarkerMove(20, 2));
+        var before = FullSignature(service.Actions);
+
+        Assert.False(service.CanMoveTo([1], 1));
+        Assert.False(service.MoveTo([1], 2));
+        Assert.False(service.MoveTo([0], -1));
+        Assert.False(service.MoveTo([0], 4));
+        Assert.False(service.MoveTo([], 1));
+
+        Assert.True(before == FullSignature(service.Actions));
+        Assert.Equal(1, service.HistoryCount);
+        Assert.False(service.CanUndo);
+    }
+
+    [Fact]
+    public void Move_to_supports_undo_and_redo()
+    {
+        var service = CreateService(MarkerMove(0, 0), MarkerMove(10, 1), MarkerMove(20, 2));
+        var original = FullSignature(service.Actions);
+
+        Assert.True(service.MoveTo([0], 3));
+        var moved = FullSignature(service.Actions);
+        Assert.True(service.CanUndo);
+        service.Undo();
+        Assert.True(original == FullSignature(service.Actions));
+        Assert.True(service.CanRedo);
+        service.Redo();
+        Assert.True(moved == FullSignature(service.Actions));
+    }
+
+    [Fact]
     public void Duplicate_expands_paired_actions_and_shifts_only_when_required_for_order()
     {
         var service = CreateService(KeyDown(0), Move(5), KeyUp(10), Wheel(15));
@@ -353,6 +423,7 @@ public sealed class MacroEditServiceTests
     };
 
     private static MacroAction Move(long atMs) => new() { AtMs = atMs, Type = MacroActionType.MouseMove, X = 1, Y = 2 };
+    private static MacroAction MarkerMove(long atMs, int marker) => new() { AtMs = atMs, Type = MacroActionType.MouseMove, X = marker, Y = 2 };
     private static MacroAction Wheel(long atMs) => new() { AtMs = atMs, Type = MacroActionType.MouseWheel, WheelDelta = 120 };
     private static MacroAction KeyDown(long atMs) => new() { AtMs = atMs, Type = MacroActionType.KeyDown, KeyCode = 65, ScanCode = 30 };
     private static MacroAction KeyUp(long atMs) => new() { AtMs = atMs, Type = MacroActionType.KeyUp, KeyCode = 65, ScanCode = 30, RawFlags = 0x80 };
@@ -378,7 +449,7 @@ public sealed class MacroEditServiceTests
         var firstIndex = random.Next(-1, actionCount + 1);
         var secondIndex = random.Next(-1, actionCount + 1);
         var selection = firstIndex == secondIndex ? [firstIndex] : new[] { firstIndex, secondIndex };
-        operationKind = random.Next(8);
+        operationKind = random.Next(9);
         switch (operationKind)
         {
             case 0:
@@ -401,10 +472,12 @@ public sealed class MacroEditServiceTests
                 var canUndo = service.CanUndo;
                 service.Undo();
                 return (canUndo, false);
-            default:
+            case 7:
                 var canRedo = service.CanRedo;
                 service.Redo();
                 return (canRedo, false);
+            default:
+                return (service.MoveTo(selection, random.Next(-1, actionCount + 1)), true);
         }
     }
 

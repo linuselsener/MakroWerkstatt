@@ -110,6 +110,42 @@ public sealed class MacroEditService
             .Where(item => item.value).Select(item => item.index).ToHashSet());
     }
 
+    public bool CanMoveTo(IEnumerable<int> selectedIndices, int targetIndex)
+    {
+        var candidate = CreateMoveToCandidate(selectedIndices, targetIndex);
+        return candidate is { } move && CanCommit(move.Actions);
+    }
+
+    public bool MoveTo(IEnumerable<int> selectedIndices, int targetIndex)
+    {
+        var candidate = CreateMoveToCandidate(selectedIndices, targetIndex);
+        return candidate is { } move && TryCommit(move.Actions, move.Selection);
+    }
+
+    private (List<MacroAction> Actions, HashSet<int> Selection)? CreateMoveToCandidate(
+        IEnumerable<int> selectedIndices, int targetIndex)
+    {
+        ArgumentNullException.ThrowIfNull(selectedIndices);
+        var original = Current.Actions;
+        if (targetIndex < 0 || targetIndex > original.Count) return null;
+
+        var selected = ExpandToPairedActions(original, selectedIndices);
+        var sourceIndices = Enumerable.Range(0, original.Count).Where(index => selected[index]).ToArray();
+        if (sourceIndices.Length == 0) return null;
+
+        var remainingIndices = Enumerable.Range(0, original.Count).Where(index => !selected[index]).ToList();
+        var insertionIndex = targetIndex - sourceIndices.Count(index => index < targetIndex);
+        if (insertionIndex < 0 || insertionIndex > remainingIndices.Count) return null;
+        remainingIndices.InsertRange(insertionIndex, sourceIndices);
+        if (remainingIndices.SequenceEqual(Enumerable.Range(0, original.Count))) return null;
+
+        var proposed = remainingIndices.Select(index => Clone(original[index])).ToList();
+        for (var index = 0; index < proposed.Count; index++)
+            proposed[index].AtMs = original[index].AtMs;
+
+        return (proposed, Enumerable.Range(insertionIndex, sourceIndices.Length).ToHashSet());
+    }
+
     public bool TryDuplicate(IEnumerable<int> selectedIndices)
     {
         var original = Current.Actions;
@@ -285,17 +321,7 @@ public sealed class MacroEditService
 
     private bool TryCommit(List<MacroAction> proposed, HashSet<int> selectedIndices)
     {
-        if (!HasSameFinalInputState(Current.Actions, proposed)) return false;
-        try
-        {
-            var document = CloneDocument(_document);
-            document.Actions = proposed;
-            MacroStorage.ValidateDocument(document);
-        }
-        catch (InvalidDataException)
-        {
-            return false;
-        }
+        if (!CanCommit(proposed)) return false;
 
         if (_historyIndex < _history.Count - 1)
             _history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
@@ -309,6 +335,22 @@ public sealed class MacroEditService
             if (_savedStateId == removedStateId) _savedStateId = null;
         }
         LastSelectionIndices = selectedIndices.Where(index => index >= 0 && index < proposed.Count).Order().ToArray();
+        return true;
+    }
+
+    private bool CanCommit(List<MacroAction> proposed)
+    {
+        if (_historyIndex < 0 || !HasSameFinalInputState(Current.Actions, proposed)) return false;
+        try
+        {
+            var document = CloneDocument(_document);
+            document.Actions = proposed;
+            MacroStorage.ValidateDocument(document);
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
         return true;
     }
 

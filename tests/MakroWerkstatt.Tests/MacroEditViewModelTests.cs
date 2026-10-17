@@ -17,11 +17,14 @@ public sealed class MacroEditViewModelTests
         context.Storage.Save(macro, encrypt: false);
         using var viewModel = new MainViewModel(context.Storage, new FakeDialogService()) { InputHookAvailable = true };
         Load(viewModel);
+        Assert.False(viewModel.MoveSelectionToIndexCommand.CanExecute(0));
         viewModel.SelectedAction = viewModel.Actions[1];
 
         Assert.True(viewModel.RemoveActionCommand.CanExecute(null));
         Assert.True(viewModel.MoveActionUpCommand.CanExecute(null));
         Assert.True(viewModel.MoveActionDownCommand.CanExecute(null));
+        Assert.True(viewModel.MoveSelectionToIndexCommand.CanExecute(0));
+        Assert.False(viewModel.MoveSelectionToIndexCommand.CanExecute(1));
         Assert.True(viewModel.DuplicateActionsCommand.CanExecute(null));
         Assert.True(viewModel.InsertPauseCommand.CanExecute(null));
         Assert.True(viewModel.ApplyActionEditsCommand.CanExecute(null));
@@ -187,6 +190,7 @@ public sealed class MacroEditViewModelTests
         Assert.False(viewModel.RemoveActionCommand.CanExecute(null));
         Assert.False(viewModel.MoveActionUpCommand.CanExecute(null));
         Assert.False(viewModel.MoveActionDownCommand.CanExecute(null));
+        Assert.False(viewModel.MoveSelectionToIndexCommand.CanExecute(0));
         Assert.False(viewModel.DuplicateActionsCommand.CanExecute(null));
         Assert.False(viewModel.InsertPauseCommand.CanExecute(null));
         Assert.False(viewModel.UndoActionEditCommand.CanExecute(null));
