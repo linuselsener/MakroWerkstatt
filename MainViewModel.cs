@@ -21,6 +21,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private readonly MacroExportService _exportService;
     private readonly MacroExportFileWriter _exportFileWriter;
     private readonly IInputCaptureService _inputCaptureService;
+    private readonly MacroEditService _macroEditService = new();
     private readonly SynchronizationContext? _uiContext = SynchronizationContext.Current;
     private readonly Stopwatch _recordClock = new();
     private readonly object _settingsSaveLock = new();
@@ -32,6 +33,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private RecordingState _recordingState;
     private bool _isPlaying;
     private bool _isDirty;
+    private bool _metadataDirty;
     private bool _currentIsSaved;
     private bool _inputHookAvailable;
     private bool _relativeMouseCaptureAvailable;
@@ -54,10 +56,25 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private bool _disposed;
     private GlobalHotkey _recordingHotkey = new(0x78, HotkeyModifiers.None);
     private GlobalHotkey _playbackHotkey = new(0x79, HotkeyModifiers.None);
+    private string _editDelayMs = "0";
+    private string _pauseDurationMs = "1000";
+    private string _editX = "0";
+    private string _editY = "0";
+    private string _editWheelDelta = "0";
+    private string _editButton = MacroMouseButtons.Left;
 
     public ObservableCollection<MacroAction> Actions { get; } = [];
     public ObservableCollection<MacroDocument> Library { get; } = [];
+    public ObservableCollection<MacroAction> SelectedActions { get; } = [];
     public ICommand RemoveActionCommand { get; }
+    public ICommand DeleteActionsCommand { get; }
+    public ICommand MoveActionUpCommand { get; }
+    public ICommand MoveActionDownCommand { get; }
+    public ICommand DuplicateActionsCommand { get; }
+    public ICommand InsertPauseCommand { get; }
+    public ICommand UndoActionEditCommand { get; }
+    public ICommand RedoActionEditCommand { get; }
+    public ICommand ApplyActionEditsCommand { get; }
     public ICommand ReloadLibraryCommand { get; }
     public ICommand SaveMacroCommand { get; }
     public ICommand DeleteMacroCommand { get; }
@@ -77,6 +94,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public event EventHandler? PlaybackStartRequested;
     public event EventHandler? PlaybackStateChanged;
     public event EventHandler? PlaybackFinished;
+    public event EventHandler? EditorSelectionChanged;
 
     /// <summary>Allows the view to keep its window-geometry input exclusion while input remains service-driven.</summary>
     public Func<MacroAction, bool>? ShouldIgnoreCapturedAction { get; set; }
@@ -84,12 +102,32 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public MacroAction? SelectedAction
     {
         get => _selectedAction;
-        set
-        {
-            if (SetProperty(ref _selectedAction, value))
-                RaiseCommandStates();
-        }
+        set => SetSelectedActions(value is null ? [] : [value]);
     }
+
+    public string EditDelayMs { get => _editDelayMs; set => SetProperty(ref _editDelayMs, value); }
+    public string PauseDurationMs { get => _pauseDurationMs; set => SetProperty(ref _pauseDurationMs, value); }
+    public string EditX { get => _editX; set => SetProperty(ref _editX, value); }
+    public string EditY { get => _editY; set => SetProperty(ref _editY, value); }
+    public string EditWheelDelta { get => _editWheelDelta; set => SetProperty(ref _editWheelDelta, value); }
+    public string EditButton { get => _editButton; set => SetProperty(ref _editButton, value); }
+    public IReadOnlyList<string> AllowedMouseButtons => MacroMouseButtons.AllowedValues;
+    public string EditKeyDisplay => SelectedAction is { Type: MacroActionType.KeyDown or MacroActionType.KeyUp } action
+        ? $"Taste · VK {action.KeyCode:X2}"
+        : "Taste nicht ausgewählt";
+    public bool IsKeyActionSelected => SelectedAction?.Type is MacroActionType.KeyDown or MacroActionType.KeyUp;
+    public bool IsMouseButtonActionSelected => SelectedAction?.Type is MacroActionType.MouseButtonDown or MacroActionType.MouseButtonUp;
+    public bool IsMousePositionActionSelected => SelectedAction?.Type is MacroActionType.MouseMove or MacroActionType.MouseMoveRelative
+        or MacroActionType.MouseButtonDown or MacroActionType.MouseButtonUp or MacroActionType.MouseWheel;
+    public bool IsWheelActionSelected => SelectedAction?.Type == MacroActionType.MouseWheel;
+    public bool IsEditorEnabled => !IsBusy && CurrentMacro is not null;
+    public bool CanInsertPauseAfterSelection => IsEditorEnabled && CanInsertPause();
+    public bool CanEditMousePosition => IsEditorEnabled && IsMousePositionActionSelected;
+    public bool CanEditWheelDelta => IsEditorEnabled && IsWheelActionSelected;
+    public bool CanEditMouseButton => IsEditorEnabled && IsMouseButtonActionSelected;
+    public bool CanCaptureActionKey => IsEditorEnabled && IsKeyActionSelected;
+    public bool CanUndoActionEdit => _macroEditService.CanUndo;
+    public bool CanRedoActionEdit => _macroEditService.CanRedo;
 
     public MacroDocument? CurrentMacro
     {
@@ -97,7 +135,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         set
         {
             if (SetProperty(ref _currentMacro, value))
+            {
+                OnPropertyChanged(nameof(IsEditorEnabled));
+                OnPropertyChanged(nameof(CanInsertPauseAfterSelection));
+                OnPropertyChanged(nameof(CanEditMousePosition));
+                OnPropertyChanged(nameof(CanEditWheelDelta));
+                OnPropertyChanged(nameof(CanEditMouseButton));
+                OnPropertyChanged(nameof(CanCaptureActionKey));
                 RaiseCommandStates();
+            }
         }
     }
 
@@ -132,6 +178,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(IsRecording));
             OnPropertyChanged(nameof(IsPaused));
             OnPropertyChanged(nameof(IsBusy));
+            OnPropertyChanged(nameof(IsEditorEnabled));
+            OnPropertyChanged(nameof(CanInsertPauseAfterSelection));
+            OnPropertyChanged(nameof(CanEditMousePosition));
+            OnPropertyChanged(nameof(CanEditWheelDelta));
+            OnPropertyChanged(nameof(CanEditMouseButton));
+            OnPropertyChanged(nameof(CanCaptureActionKey));
             RaiseCommandStates();
         }
     }
@@ -146,6 +198,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             if (!SetProperty(ref _isPlaying, value)) return;
             OnPropertyChanged(nameof(IsBusy));
+            OnPropertyChanged(nameof(IsEditorEnabled));
+            OnPropertyChanged(nameof(CanInsertPauseAfterSelection));
+            OnPropertyChanged(nameof(CanEditMousePosition));
+            OnPropertyChanged(nameof(CanEditWheelDelta));
+            OnPropertyChanged(nameof(CanEditMouseButton));
+            OnPropertyChanged(nameof(CanCaptureActionKey));
             RaiseCommandStates();
             UpdateEstimate();
         }
@@ -198,6 +256,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             if (CurrentMacro is not null)
             {
                 CurrentMacro.Name = value;
+                _metadataDirty = true;
+                _macroEditService.UpdateDocument(CurrentMacro);
                 IsDirty = true;
                 RaiseCommandStates();
             }
@@ -265,7 +325,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _exportService = exportService ?? new MacroExportService();
         _exportFileWriter = exportFileWriter ?? new MacroExportFileWriter();
         _inputCaptureService = inputCaptureService ?? new InertInputCaptureService();
-        RemoveActionCommand = new RelayCommand(RemoveSelectedAction, () => SelectedAction is not null && !IsBusy);
+        RemoveActionCommand = new RelayCommand(RemoveSelectedActions, () => CanEditActions && SelectedActions.Count > 0);
+        DeleteActionsCommand = RemoveActionCommand;
+        MoveActionUpCommand = new RelayCommand(() => MoveSelectedActions(moveUp: true), CanMoveSelectedActionsUp);
+        MoveActionDownCommand = new RelayCommand(() => MoveSelectedActions(moveUp: false), CanMoveSelectedActionsDown);
+        DuplicateActionsCommand = new RelayCommand(DuplicateSelectedActions, () => CanEditActions && SelectedActions.Count > 0
+            && Actions.Count + SelectedActions.Count <= MacroStorage.MaximumActionCount);
+        InsertPauseCommand = new RelayCommand(InsertPause, CanInsertPause);
+        UndoActionEditCommand = new RelayCommand(UndoActionEdit, () => CanEditActions && _macroEditService.CanUndo);
+        RedoActionEditCommand = new RelayCommand(RedoActionEdit, () => CanEditActions && _macroEditService.CanRedo);
+        ApplyActionEditsCommand = new RelayCommand(ApplyActionEdits, () => CanEditActions && SelectedAction is not null);
         ReloadLibraryCommand = new RelayCommand(ReloadLibrary, () => !IsBusy);
         SaveMacroCommand = new RelayCommand(() => SaveCurrentMacro(showSuccess: true), CanSaveMacro);
         DeleteMacroCommand = new RelayCommand(DeleteCurrentMacro, () => !IsBusy && CurrentIsSaved && CurrentMacro is not null);
@@ -345,7 +414,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
 
         CurrentMacro.Name = name;
-        CurrentMacro.Actions = Actions.ToList();
+        CurrentMacro.Actions = Actions.Select(CloneAction).ToList();
         CurrentMacro.UpdatedUtc = DateTimeOffset.UtcNow;
         CurrentMacro.FormatVersion = MacroStorage.PayloadFormatVersion;
         try
@@ -360,6 +429,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
 
         CurrentIsSaved = true;
+        _metadataDirty = false;
+        _macroEditService.UpdateDocument(CurrentMacro);
+        _macroEditService.MarkSaved();
         IsDirty = false;
         var index = -1;
         for (var i = 0; i < Library.Count; i++)
@@ -565,7 +637,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _macroName = macro.Name;
             OnPropertyChanged(nameof(MacroName));
             CurrentIsSaved = true;
+            _metadataDirty = false;
+            _macroEditService.Reset(macro, macro.Actions, isSaved: true);
             IsDirty = false;
+            SetSelectedActions([]);
             Actions.Clear();
             foreach (var action in macro.Actions) Actions.Add(action);
         }
@@ -600,7 +675,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         CurrentMacro = null;
         SetSelectedLibraryItem(null);
         CurrentIsSaved = false;
+        _metadataDirty = false;
         IsDirty = false;
+        _macroEditService.Reset(new MacroDocument(), [], isSaved: true);
+        SetSelectedActions([]);
         Actions.Clear();
         MacroName = "Neue Aufnahme";
         RaiseCommandStates();
@@ -1009,7 +1087,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         CurrentMacro = selected;
         SetSelectedLibraryItem(selected);
         CurrentIsSaved = true;
+        _metadataDirty = false;
+        _macroEditService.Reset(selected, selected.Actions, isSaved: true);
         IsDirty = false;
+        SetSelectedActions([]);
         Actions.Clear();
         foreach (var action in selected.Actions) Actions.Add(action);
         FooterMessage = $"„{selected.Name}“ geöffnet";
@@ -1067,8 +1148,38 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         if (!IsDirty) return true;
         if (!_dialogs.ConfirmDiscardChanges()) return false;
-        IsDirty = false;
         return true;
+    }
+
+    public void SetSelectedActions(IEnumerable<MacroAction> selectedActions)
+    {
+        var currentActions = Actions.ToHashSet();
+        var selection = selectedActions.Where(currentActions.Contains).Distinct().ToArray();
+        var unchanged = selection.Length == SelectedActions.Count
+            && selection.Select((action, index) => ReferenceEquals(action, SelectedActions[index])).All(value => value);
+        if (unchanged) return;
+
+        SelectedActions.Clear();
+        foreach (var action in selection) SelectedActions.Add(action);
+        var primary = selection.LastOrDefault();
+        if (!ReferenceEquals(_selectedAction, primary))
+        {
+            _selectedAction = primary;
+            OnPropertyChanged(nameof(SelectedAction));
+        }
+        OnPropertyChanged(nameof(EditKeyDisplay));
+        OnPropertyChanged(nameof(IsKeyActionSelected));
+        OnPropertyChanged(nameof(IsMouseButtonActionSelected));
+        OnPropertyChanged(nameof(IsMousePositionActionSelected));
+        OnPropertyChanged(nameof(IsWheelActionSelected));
+        OnPropertyChanged(nameof(CanInsertPauseAfterSelection));
+        OnPropertyChanged(nameof(CanEditMousePosition));
+        OnPropertyChanged(nameof(CanEditWheelDelta));
+        OnPropertyChanged(nameof(CanEditMouseButton));
+        OnPropertyChanged(nameof(CanCaptureActionKey));
+        UpdateEditorFields();
+        RaiseCommandStates();
+        EditorSelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void CaptureAction(MacroAction action)
@@ -1155,8 +1266,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         };
         MacroName = CurrentMacro.Name;
         CurrentIsSaved = false;
+        _metadataDirty = true;
         IsDirty = true;
+        SetSelectedActions([]);
         Actions.Clear();
+        _macroEditService.Reset(CurrentMacro, [], isSaved: false);
         _recordClock.Restart();
         RecordingState = RecordingState.Recording;
         FooterMessage = "Aufnahme läuft · Aktionen in MakroWerkstatt werden nicht erfasst";
@@ -1185,6 +1299,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (IsRecording) _inputCaptureService.FlushPendingMouseMovement();
         _recordClock.Stop();
         RecordingState = RecordingState.Idle;
+        if (CurrentMacro is not null) _macroEditService.Reset(CurrentMacro, Actions, isSaved: false);
         FooterMessage = $"Aufnahme beendet · {Actions.Count:N0} Aktionen noch nicht gespeichert";
     }
 
@@ -1193,34 +1308,240 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (!IsRecording && !IsPaused) return;
         _recordClock.Stop();
         RecordingState = RecordingState.Idle;
+        SetSelectedActions([]);
         Actions.Clear();
         CurrentMacro = null;
         CurrentIsSaved = false;
+        _metadataDirty = false;
         IsDirty = false;
+        _macroEditService.Reset(new MacroDocument(), [], isSaved: true);
         MacroName = "Neue Aufnahme";
         SetSelectedLibraryItem(null);
         FooterMessage = "Aufnahme sofort gestoppt und verworfen";
     }
 
-    private void RemoveSelectedAction()
+    private bool CanEditActions => !IsBusy && CurrentMacro is not null;
+
+    private bool CanMoveSelectedActionsUp() => CanEditActions && _macroEditService.CanMove(SelectedActionIndices(), moveUp: true);
+
+    private bool CanMoveSelectedActionsDown() => CanEditActions && _macroEditService.CanMove(SelectedActionIndices(), moveUp: false);
+
+    private bool CanInsertPause() => CanEditActions && SelectedAction is not null
+        && Actions.IndexOf(SelectedAction) >= 0 && Actions.IndexOf(SelectedAction) < Actions.Count - 1;
+
+    private int[] SelectedActionIndices()
     {
-        if (IsBusy || SelectedAction is not { } action) return;
-        Actions.Remove(action);
-        if (CurrentMacro is not null) CurrentMacro.Actions = Actions.ToList();
-        SelectedAction = null;
-        IsDirty = true;
-        FooterMessage = "Aktion entfernt · Änderungen noch nicht gespeichert";
+        if (SelectedActions.Count == 0) return [];
+        var selection = SelectedActions.ToHashSet();
+        var indices = new List<int>(selection.Count);
+        for (var index = 0; index < Actions.Count; index++)
+            if (selection.Contains(Actions[index])) indices.Add(index);
+        return indices.ToArray();
     }
+
+    private void MoveSelectedActions(bool moveUp)
+    {
+        if (!CanEditActions || !_macroEditService.TryMove(SelectedActionIndices(), moveUp))
+        {
+            ShowEditFailure();
+            return;
+        }
+        CompleteActionEdit(moveUp ? "Auswahl nach oben verschoben" : "Auswahl nach unten verschoben");
+    }
+
+    private void DuplicateSelectedActions()
+    {
+        if (!CanEditActions || !_macroEditService.TryDuplicate(SelectedActionIndices()))
+        {
+            ShowEditFailure();
+            return;
+        }
+        CompleteActionEdit("Auswahl dupliziert");
+    }
+
+    private void RemoveSelectedActions()
+    {
+        if (!CanEditActions || !_macroEditService.TryDelete(SelectedActionIndices()))
+        {
+            if (SelectedActions.Count > 0) ShowEditFailure();
+            return;
+        }
+        CompleteActionEdit("Auswahl entfernt");
+    }
+
+    private void InsertPause()
+    {
+        if (!CanInsertPause() || SelectedAction is null) return;
+        if (!long.TryParse(PauseDurationMs, NumberStyles.Integer, CultureInfo.InvariantCulture, out var duration)
+            || duration is < 1 or > MacroEditService.MaximumEditableGapMs)
+        {
+            ShowInvalidEditInput("Die Pause muss zwischen 1 und 86.400.000 Millisekunden liegen.");
+            return;
+        }
+        _macroEditService.UpdateDocument(CurrentMacro!);
+        if (!_macroEditService.TryInsertPauseAfter(Actions.IndexOf(SelectedAction), duration))
+        {
+            ShowEditFailure();
+            return;
+        }
+        CompleteActionEdit("Pause vor der nächsten Aktion eingefügt");
+    }
+
+    private void ApplyActionEdits()
+    {
+        if (!CanEditActions || SelectedAction is null) return;
+        var actionIndex = Actions.IndexOf(SelectedAction);
+        if (actionIndex < 0) return;
+
+        var currentGap = SelectedAction.AtMs - (actionIndex == 0 ? 0 : Actions[actionIndex - 1].AtMs);
+        if (!long.TryParse(EditDelayMs, NumberStyles.Integer, CultureInfo.InvariantCulture, out var enteredGap)
+            || enteredGap < 0 || enteredGap > MacroEditService.MaximumEditableGapMs && enteredGap != currentGap)
+        {
+            ShowInvalidEditInput("Der Abstand muss zwischen 0 und 86.400.000 Millisekunden liegen.");
+            return;
+        }
+
+        var edit = new MacroActionEdit(DelayFromPreviousMs: enteredGap == currentGap ? null : enteredGap);
+        if (IsMousePositionActionSelected)
+        {
+            if (!TryParseEditorInt(EditX, out var x) || !TryParseEditorInt(EditY, out var y))
+            {
+                ShowInvalidEditInput("X und Y müssen ganze Zahlen sein.");
+                return;
+            }
+            edit = edit with { X = x, Y = y };
+        }
+        if (IsMouseButtonActionSelected)
+        {
+            if (!MacroMouseButtons.IsAllowed(EditButton))
+            {
+                ShowInvalidEditInput("Wähle eine erlaubte Maustaste aus.");
+                return;
+            }
+            edit = edit with { Button = EditButton };
+        }
+        if (IsWheelActionSelected)
+        {
+            if (!TryParseEditorInt(EditWheelDelta, out var wheelDelta))
+            {
+                ShowInvalidEditInput("Das Mausrad-Delta muss eine ganze Zahl sein.");
+                return;
+            }
+            edit = edit with { WheelDelta = wheelDelta };
+        }
+
+        _macroEditService.UpdateDocument(CurrentMacro!);
+        if (!_macroEditService.TryEditAction(actionIndex, edit))
+        {
+            ShowEditFailure();
+            return;
+        }
+        CompleteActionEdit("Aktion geändert");
+    }
+
+    public bool TrySetSelectedKey(int keyCode)
+    {
+        if (!CanEditActions || SelectedAction is null || keyCode is < 0 or > 255) return false;
+        _macroEditService.UpdateDocument(CurrentMacro!);
+        if (!_macroEditService.TryEditAction(Actions.IndexOf(SelectedAction), new MacroActionEdit(KeyCode: keyCode)))
+        {
+            ShowEditFailure();
+            return false;
+        }
+        CompleteActionEdit("Taste geändert");
+        return true;
+    }
+
+    private static bool TryParseEditorInt(string text, out int value) =>
+        int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+
+    private void UndoActionEdit()
+    {
+        if (!CanEditActions || !_macroEditService.CanUndo) return;
+        _macroEditService.Undo();
+        CompleteActionEdit("Bearbeitung rückgängig gemacht");
+    }
+
+    private void RedoActionEdit()
+    {
+        if (!CanEditActions || !_macroEditService.CanRedo) return;
+        _macroEditService.Redo();
+        CompleteActionEdit("Bearbeitung wiederholt");
+    }
+
+    private void CompleteActionEdit(string message)
+    {
+        var editedActions = _macroEditService.Actions;
+        var selected = _macroEditService.LastSelectionIndices.Where(index => index >= 0 && index < editedActions.Count).ToArray();
+        SetSelectedActions([]);
+        Actions.Clear();
+        foreach (var action in editedActions) Actions.Add(action);
+        if (CurrentMacro is not null) CurrentMacro.Actions = Actions.Select(CloneAction).ToList();
+        SetSelectedActions(selected.Select(index => Actions[index]));
+        IsDirty = _metadataDirty || !_macroEditService.IsAtSavedState;
+        OnPropertyChanged(nameof(CanUndoActionEdit));
+        OnPropertyChanged(nameof(CanRedoActionEdit));
+        FooterMessage = $"{message} · Änderungen noch nicht gespeichert";
+        RaiseCommandStates();
+        EstimateInvalidated?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void UpdateEditorFields()
+    {
+        if (SelectedAction is not { } action)
+        {
+            EditDelayMs = "0";
+            EditX = "0";
+            EditY = "0";
+            EditWheelDelta = "0";
+            EditButton = MacroMouseButtons.Left;
+            return;
+        }
+        var index = Actions.IndexOf(action);
+        var previousTime = index <= 0 ? 0 : Actions[index - 1].AtMs;
+        EditDelayMs = Math.Max(0, action.AtMs - previousTime).ToString(CultureInfo.InvariantCulture);
+        EditX = action.X.ToString(CultureInfo.InvariantCulture);
+        EditY = action.Y.ToString(CultureInfo.InvariantCulture);
+        EditWheelDelta = action.WheelDelta.ToString(CultureInfo.InvariantCulture);
+        if (MacroMouseButtons.IsAllowed(action.Button)) EditButton = action.Button;
+    }
+
+    private void ShowEditFailure() => ShowInvalidEditInput("Die Bearbeitung ist ungültig oder würde eine gehaltene Taste verändern.");
+
+    private void ShowInvalidEditInput(string message) => _dialogs.Show(message, "Aktion nicht geändert", DialogKind.Warning);
+
+    private static MacroAction CloneAction(MacroAction action) => new()
+    {
+        AtMs = action.AtMs,
+        Type = action.Type,
+        X = action.X,
+        Y = action.Y,
+        KeyCode = action.KeyCode,
+        ScanCode = action.ScanCode,
+        RawFlags = action.RawFlags,
+        WheelDelta = action.WheelDelta,
+        Button = action.Button
+    };
 
     private void StopClockAndRecording()
     {
         _recordClock.Stop();
         RecordingState = RecordingState.Idle;
+        if (CurrentMacro is not null) _macroEditService.Reset(CurrentMacro, Actions, isSaved: false);
     }
 
     private void RaiseCommandStates()
     {
         ((RelayCommand)RemoveActionCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)MoveActionUpCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)MoveActionDownCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)DuplicateActionsCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)InsertPauseCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)UndoActionEditCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)RedoActionEditCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ApplyActionEditsCommand).RaiseCanExecuteChanged();
+        OnPropertyChanged(nameof(CanUndoActionEdit));
+        OnPropertyChanged(nameof(CanRedoActionEdit));
         ((RelayCommand)ReloadLibraryCommand).RaiseCanExecuteChanged();
         ((RelayCommand)SaveMacroCommand).RaiseCanExecuteChanged();
         ((RelayCommand)DeleteMacroCommand).RaiseCanExecuteChanged();

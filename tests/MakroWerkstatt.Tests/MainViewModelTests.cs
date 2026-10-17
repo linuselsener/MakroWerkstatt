@@ -61,7 +61,7 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public void Removing_selected_action_updates_selection_actions_and_dirty_state()
+    public void Removing_a_selected_key_transition_removes_its_pair_and_updates_dirty_state()
     {
         using var context = new TestContext();
         var macro = new MacroDocument
@@ -70,7 +70,8 @@ public sealed class MainViewModelTests
             Actions =
             [
                 new MacroAction { AtMs = 0, Type = MacroActionType.KeyDown, KeyCode = 65 },
-                new MacroAction { AtMs = 10, Type = MacroActionType.KeyUp, KeyCode = 65 }
+                new MacroAction { AtMs = 10, Type = MacroActionType.KeyUp, KeyCode = 65 },
+                new MacroAction { AtMs = 20, Type = MacroActionType.MouseMove, X = 4, Y = 5 }
             ]
         };
         context.Storage.Save(macro);
@@ -86,10 +87,9 @@ public sealed class MainViewModelTests
         viewModel.RemoveActionCommand.Execute(null);
 
         Assert.Single(viewModel.Actions);
-        Assert.Equal(10, viewModel.Actions[0].AtMs);
-        Assert.Equal(MacroActionType.KeyUp, viewModel.Actions[0].Type);
+        Assert.Equal(MacroActionType.MouseMove, viewModel.Actions[0].Type);
         Assert.Single(viewModel.CurrentMacro!.Actions);
-        Assert.Null(viewModel.SelectedAction);
+        Assert.Same(viewModel.Actions[0], viewModel.SelectedAction);
         Assert.True(viewModel.IsDirty);
         Assert.True(viewModel.SaveMacroCommand.CanExecute(null));
     }

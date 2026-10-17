@@ -27,6 +27,9 @@ public partial class MainWindow : Window
     private bool _allowClose;
     private bool _shutdownCompleted;
     private Button? _hotkeyCaptureButton;
+    private Button? _actionKeyCaptureButton;
+    private bool _syncingActionSelection;
+    private bool _updatingUi;
 
     public MainWindow()
     {
@@ -43,8 +46,10 @@ public partial class MainWindow : Window
         _uiTimer.Tick += (_, _) => UpdateActivityDisplay();
         _uiTimer.Start();
         Actions.CollectionChanged += (_, _) => RefreshActionList();
-        _viewModel.RecordingStartRequested += (_, _) => CancelHotkeyCapture();
-        _viewModel.PlaybackStartRequested += (_, _) => CancelHotkeyCapture();
+        ActionListView.SelectionChanged += ActionListView_SelectionChanged;
+        _viewModel.EditorSelectionChanged += (_, _) => SyncActionSelection();
+        _viewModel.RecordingStartRequested += (_, _) => { CancelHotkeyCapture(); CancelActionKeyCapture(); };
+        _viewModel.PlaybackStartRequested += (_, _) => { CancelHotkeyCapture(); CancelActionKeyCapture(); };
         _viewModel.PlaybackStateChanged += (_, _) =>
         {
             if (_uiReady) UpdateUI();
@@ -74,7 +79,6 @@ public partial class MainWindow : Window
     {
         _viewModel.LoadSettings();
         UpdateHotkeyLabels();
-
         LoadLibrary(showWarnings: true);
         try
         {
@@ -90,7 +94,6 @@ public partial class MainWindow : Window
                 "Der globale Tastatur- und Maushook konnte nicht gestartet werden. Aufnehmen und Abspielen sind nicht verfügbar.",
                 "MakroWerkstatt · Eingabezugriff", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-
         _uiReady = true;
         UpdateUI();
         UpdateEstimate();
@@ -129,6 +132,22 @@ public partial class MainWindow : Window
 
     private void HotkeyCapture_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (_actionKeyCaptureButton is not null)
+        {
+            var actionKey = e.Key == Key.System ? e.SystemKey : e.Key;
+            e.Handled = true;
+            if (actionKey == Key.Escape)
+            {
+                CancelActionKeyCapture();
+                _footerMessage = "Tastenerfassung abgebrochen";
+                UpdateActivityDisplay();
+                return;
+            }
+            var capturedActionKeyCode = KeyInterop.VirtualKeyFromKey(actionKey);
+            if (_viewModel.TrySetSelectedKey(capturedActionKeyCode))
+                CancelActionKeyCapture();
+            return;
+        }
         if (_hotkeyCaptureButton is null) return;
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         e.Handled = true;
@@ -165,6 +184,47 @@ public partial class MainWindow : Window
         UpdateHotkeyLabels();
     }
 
+    private void ActionKeyCapture_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || _isRecording || _isPaused || _isPlaying || !_viewModel.IsKeyActionSelected) return;
+        CancelHotkeyCapture();
+        _actionKeyCaptureButton = button;
+        button.SetCurrentValue(ContentControl.ContentProperty, "Jetzt Taste drücken · Esc bricht ab");
+        button.Focus();
+        _footerMessage = "Taste für die ausgewählte Aktion drücken · Esc bricht ab";
+        UpdateActivityDisplay();
+    }
+
+    private void CancelActionKeyCapture()
+    {
+        if (_actionKeyCaptureButton is null) return;
+        _actionKeyCaptureButton = null;
+        if (IsInitialized)
+            CaptureActionKeyButton?.SetCurrentValue(ContentControl.ContentProperty, _viewModel.EditKeyDisplay);
+    }
+
+    private void ActionListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingActionSelection) return;
+        _viewModel.SetSelectedActions(ActionListView.SelectedItems.Cast<MacroAction>());
+    }
+
+    private void SyncActionSelection()
+    {
+        if (ActionListView is null) return;
+        _syncingActionSelection = true;
+        try
+        {
+            ActionListView.SelectedItems.Clear();
+            foreach (var action in _viewModel.SelectedActions)
+                if (ActionListView.Items.Contains(action)) ActionListView.SelectedItems.Add(action);
+        }
+        finally
+        {
+            _syncingActionSelection = false;
+        }
+    }
+
     private void UpdateHotkeyLabels()
     {
         if (RecordHotkeyButton is not null)
@@ -189,66 +249,74 @@ public partial class MainWindow : Window
 
     private void UpdateUI()
     {
-        if (!_uiReady) return;
-        var busy = _isRecording || _isPaused || _isPlaying;
-        NewRecordingButton.IsEnabled = !busy;
-        MacroListBox.IsEnabled = !_isRecording && !_isPaused && !_isPlaying;
-        StopRecordingButton.IsEnabled = _isRecording || _isPaused;
-        RecordHotkeyButton.IsEnabled = !busy;
-        PlaybackHotkeyButton.IsEnabled = !busy;
-
-        PauseRecordingButton.Visibility = _isRecording || _isPaused ? Visibility.Visible : Visibility.Collapsed;
-        PauseRecordingButton.Content = _isPaused ? "▶  Fortsetzen" : "Ⅱ  Pause";
-        DiscardRecordingButton.Visibility = _isRecording || _isPaused ? Visibility.Visible : Visibility.Collapsed;
-        StopPlaybackButton.Visibility = _isPlaying ? Visibility.Visible : Visibility.Collapsed;
-        ActivityTimerText.Visibility = _isRecording || _isPaused ? Visibility.Visible : Visibility.Collapsed;
-
-        if (_isRecording || _isPaused)
+        if (!_uiReady || _updatingUi) return;
+        _updatingUi = true;
+        try
         {
-            StatusBadgeBorder.Background = Brush("#7F3038");
-            StatusText.Text = _isPaused ? "PAUSIERT" : "AUFNAHME";
-            StatusText.Foreground = Brushes.White;
-            ActivityBanner.Background = Brush(_isPaused ? "#FFF8EB" : "#FFF0F0");
-            ActivityBanner.BorderBrush = Brush(_isPaused ? "#EBD7AD" : "#F3CDCF");
-            ActivityDot.Fill = _isPaused ? Brush("#D09620") : (Brush)FindResource("Red");
-            ActivityStatusText.Text = _isPaused ? "AUFNAHME PAUSIERT" : "AUFNAHME LÄUFT";
-            ActivityHintText.Text = _isPaused
-                ? "  ·  Aufnahme pausiert; drücke Fortsetzen oder stoppe und lösche die Sequenz."
-                : "  ·  Aktionen in anderen Fenstern werden erfasst. Vertrauliche Texte können enthalten sein.";
-            _footerMessage = _isPaused ? "Aufnahme pausiert" : $"Aufnahme läuft · {Actions.Count:N0} Aktionen";
-        }
-        else if (_isPlaying)
-        {
-            StatusBadgeBorder.Background = Brush("#1E795E");
-            StatusText.Text = "WIEDERGABE";
-            StatusText.Foreground = Brushes.White;
-            ActivityBanner.Background = Brush("#ECF7F3");
-            ActivityBanner.BorderBrush = Brush("#C8E9DB");
-            ActivityDot.Fill = (Brush)FindResource("Green");
-            ActivityStatusText.Text = _playbackDetail;
-            ActivityHintText.Text = $"  ·  {_viewModel.PlaybackHotkey}, Esc oder die Stopp-Schaltfläche beendet die Wiedergabe.";
-        }
-        else
-        {
-            StatusBadgeBorder.Background = Brush("#273951");
-            StatusText.Text = "BEREIT";
-            StatusText.Foreground = Brush("#DAE4EF");
-            ActivityBanner.Background = Brush("#EAF1FA");
-            ActivityBanner.BorderBrush = Brush("#D7E3F2");
-            ActivityDot.Fill = Brush("#8EA2BB");
-            ActivityStatusText.Text = _viewModel.CurrentMacro is null ? "Bereit für eine neue Sequenz" : $"{_viewModel.CurrentMacro.Name} · {Actions.Count:N0} Aktionen";
-            ActivityHintText.Text = $"  ·  Aufnahme: {_viewModel.RecordingHotkey} · Wiedergabe starten/stoppen: {_viewModel.PlaybackHotkey}.";
-        }
+            var busy = _isRecording || _isPaused || _isPlaying;
+            NewRecordingButton.IsEnabled = !busy;
+            MacroListBox.IsEnabled = !_isRecording && !_isPaused && !_isPlaying;
+            StopRecordingButton.IsEnabled = _isRecording || _isPaused;
+            RecordHotkeyButton.IsEnabled = !busy;
+            PlaybackHotkeyButton.IsEnabled = !busy;
 
-        DurationTextBox.IsEnabled = StretchCheckBox.IsChecked == true;
-        DurationUnitComboBox.IsEnabled = StretchCheckBox.IsChecked == true;
-        RandomMinTextBox.IsEnabled = RandomizerCheckBox.IsChecked == true;
-        RandomMaxTextBox.IsEnabled = RandomizerCheckBox.IsChecked == true;
-        RelativeMouseCheckBox.IsEnabled = !busy;
-        RepeatCountTextBox.IsEnabled = !busy;
-        FooterStatusText.Text = _footerMessage;
-        UpdateActivityDisplay();
-        UpdateEstimate();
+            PauseRecordingButton.Visibility = _isRecording || _isPaused ? Visibility.Visible : Visibility.Collapsed;
+            PauseRecordingButton.Content = _isPaused ? "▶  Fortsetzen" : "Ⅱ  Pause";
+            DiscardRecordingButton.Visibility = _isRecording || _isPaused ? Visibility.Visible : Visibility.Collapsed;
+            StopPlaybackButton.Visibility = _isPlaying ? Visibility.Visible : Visibility.Collapsed;
+            ActivityTimerText.Visibility = _isRecording || _isPaused ? Visibility.Visible : Visibility.Collapsed;
+
+            if (_isRecording || _isPaused)
+            {
+                StatusBadgeBorder.Background = Brush("#7F3038");
+                StatusText.Text = _isPaused ? "PAUSIERT" : "AUFNAHME";
+                StatusText.Foreground = Brushes.White;
+                ActivityBanner.Background = Brush(_isPaused ? "#FFF8EB" : "#FFF0F0");
+                ActivityBanner.BorderBrush = Brush(_isPaused ? "#EBD7AD" : "#F3CDCF");
+                ActivityDot.Fill = _isPaused ? Brush("#D09620") : (Brush)FindResource("Red");
+                ActivityStatusText.Text = _isPaused ? "AUFNAHME PAUSIERT" : "AUFNAHME LÄUFT";
+                ActivityHintText.Text = _isPaused
+                    ? "  ·  Aufnahme pausiert; drücke Fortsetzen oder stoppe und lösche die Sequenz."
+                    : "  ·  Aktionen in anderen Fenstern werden erfasst. Vertrauliche Texte können enthalten sein.";
+                _footerMessage = _isPaused ? "Aufnahme pausiert" : $"Aufnahme läuft · {Actions.Count:N0} Aktionen";
+            }
+            else if (_isPlaying)
+            {
+                StatusBadgeBorder.Background = Brush("#1E795E");
+                StatusText.Text = "WIEDERGABE";
+                StatusText.Foreground = Brushes.White;
+                ActivityBanner.Background = Brush("#ECF7F3");
+                ActivityBanner.BorderBrush = Brush("#C8E9DB");
+                ActivityDot.Fill = (Brush)FindResource("Green");
+                ActivityStatusText.Text = _playbackDetail;
+                ActivityHintText.Text = $"  ·  {_viewModel.PlaybackHotkey}, Esc oder die Stopp-Schaltfläche beendet die Wiedergabe.";
+            }
+            else
+            {
+                StatusBadgeBorder.Background = Brush("#273951");
+                StatusText.Text = "BEREIT";
+                StatusText.Foreground = Brush("#DAE4EF");
+                ActivityBanner.Background = Brush("#EAF1FA");
+                ActivityBanner.BorderBrush = Brush("#D7E3F2");
+                ActivityDot.Fill = Brush("#8EA2BB");
+                ActivityStatusText.Text = _viewModel.CurrentMacro is null ? "Bereit für eine neue Sequenz" : $"{_viewModel.CurrentMacro.Name} · {Actions.Count:N0} Aktionen";
+                ActivityHintText.Text = $"  ·  Aufnahme: {_viewModel.RecordingHotkey} · Wiedergabe starten/stoppen: {_viewModel.PlaybackHotkey}.";
+            }
+
+            DurationTextBox.IsEnabled = StretchCheckBox.IsChecked == true;
+            DurationUnitComboBox.IsEnabled = StretchCheckBox.IsChecked == true;
+            RandomMinTextBox.IsEnabled = RandomizerCheckBox.IsChecked == true;
+            RandomMaxTextBox.IsEnabled = RandomizerCheckBox.IsChecked == true;
+            RelativeMouseCheckBox.IsEnabled = !busy;
+            RepeatCountTextBox.IsEnabled = !busy;
+            FooterStatusText.Text = _footerMessage;
+            UpdateActivityDisplay();
+            UpdateEstimate();
+        }
+        finally
+        {
+            _updatingUi = false;
+        }
     }
 
     private void UpdateActivityDisplay()
