@@ -114,9 +114,8 @@ public sealed class MacroEditService
     {
         var original = Current.Actions;
         var selected = ExpandToPairedActions(original, selectedIndices);
-        if (selected.Length == 0 || original.Count + selected.Length > MacroStorage.MaximumActionCount) return false;
-
         var sourceIndices = Enumerable.Range(0, original.Count).Where(index => selected[index]).ToArray();
+        if (sourceIndices.Length == 0 || original.Count + sourceIndices.Length > MacroStorage.MaximumActionCount) return false;
         var pairs = FindPairs(original);
         if (sourceIndices.Any(index => IsInputTransition(original[index].Type) && !pairs.ContainsKey(index))) return false;
         var firstSource = original[sourceIndices[0]].AtMs;
@@ -161,7 +160,7 @@ public sealed class MacroEditService
     {
         var original = Current.Actions;
         var selected = ExpandToPairedActions(original, selectedIndices);
-        if (selected.Length == 0) return false;
+        if (!selected.Any(value => value)) return false;
         var proposed = original.Where((_, index) => !selected[index]).Select(Clone).ToList();
         var nextSelectionIndex = Math.Min(Array.FindIndex(selected, value => value), proposed.Count - 1);
         var selection = nextSelectionIndex >= 0 && proposed.Count > 0 ? new HashSet<int> { nextSelectionIndex } : [];
@@ -327,33 +326,39 @@ public sealed class MacroEditService
     private static Dictionary<int, int> FindPairs(IReadOnlyList<MacroAction> actions)
     {
         var pairs = new Dictionary<int, int>();
-        var keys = new Dictionary<(int KeyCode, bool Extended), int>();
-        var buttons = new Dictionary<string, int>(StringComparer.Ordinal);
+        var keys = new Dictionary<(int KeyCode, bool Extended), Queue<int>>();
+        var buttons = new Dictionary<string, Queue<int>>(StringComparer.Ordinal);
         for (var index = 0; index < actions.Count; index++)
         {
             var action = actions[index];
             if (action.Type == MacroActionType.KeyDown)
             {
                 var key = (action.KeyCode, (action.RawFlags & 0x01) != 0);
-                if (!keys.ContainsKey(key)) keys[key] = index;
+                if (!keys.TryGetValue(key, out var keyDowns)) keys[key] = keyDowns = new Queue<int>();
+                keyDowns.Enqueue(index);
             }
             else if (action.Type == MacroActionType.KeyUp)
             {
                 var key = (action.KeyCode, (action.RawFlags & 0x01) != 0);
-                if (keys.Remove(key, out var downIndex))
+                if (keys.TryGetValue(key, out var keyDowns) && keyDowns.TryDequeue(out var downIndex))
                 {
                     pairs[index] = downIndex;
                     pairs[downIndex] = index;
+                    if (keyDowns.Count == 0) keys.Remove(key);
                 }
             }
             else if (action.Type == MacroActionType.MouseButtonDown)
             {
-                if (!buttons.ContainsKey(action.Button)) buttons[action.Button] = index;
+                if (!buttons.TryGetValue(action.Button, out var buttonDowns))
+                    buttons[action.Button] = buttonDowns = new Queue<int>();
+                buttonDowns.Enqueue(index);
             }
-            else if (action.Type == MacroActionType.MouseButtonUp && buttons.Remove(action.Button, out var downIndex))
+            else if (action.Type == MacroActionType.MouseButtonUp
+                && buttons.TryGetValue(action.Button, out var buttonDowns) && buttonDowns.TryDequeue(out var downIndex))
             {
                 pairs[index] = downIndex;
                 pairs[downIndex] = index;
+                if (buttonDowns.Count == 0) buttons.Remove(action.Button);
             }
         }
         return pairs;
