@@ -1,0 +1,84 @@
+name: Release build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+          cache: true
+          cache-dependency-path: |
+            MakroWerkstatt.csproj
+            tests/MakroWerkstatt.Tests/MakroWerkstatt.Tests.csproj
+            tools/SmokeTests/SmokeTests.csproj
+
+      - name: Prüfe Tag gegen Projektversion
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content -LiteralPath .\MakroWerkstatt.csproj -Raw
+          $versionNode = $project.SelectSingleNode('/Project/PropertyGroup/Version')
+          if ($null -eq $versionNode) { throw 'In MakroWerkstatt.csproj fehlt die Projektversion.' }
+          $projectVersion = $versionNode.InnerText.Trim()
+          $tag = $env:GITHUB_REF_NAME
+          if (-not $tag.StartsWith('v', [StringComparison]::Ordinal)) { throw "Ungültiger Release-Tag: $tag" }
+          $tagVersion = $tag.Substring(1)
+          if ($tagVersion -notmatch '^\d+\.\d+\.\d+$') { throw "Der Tag muss vX.Y.Z entsprechen: $tag" }
+          if ($tagVersion -cne $projectVersion) {
+            throw "Tag-Version $tagVersion stimmt nicht mit Projektversion $projectVersion überein."
+          }
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "version=$tagVersion"
+
+      - name: Restore
+        shell: pwsh
+        run: |
+          dotnet restore .\tests\MakroWerkstatt.Tests\MakroWerkstatt.Tests.csproj
+          dotnet restore .\tools\SmokeTests\SmokeTests.csproj
+
+      - name: Build app
+        run: dotnet build .\MakroWerkstatt.csproj -c Release --no-restore -warnaserror
+
+      - name: Build tests
+        run: dotnet build .\tests\MakroWerkstatt.Tests\MakroWerkstatt.Tests.csproj -c Release --no-restore -warnaserror
+
+      - name: Build smoke test
+        run: dotnet build .\tools\SmokeTests\SmokeTests.csproj -c Release --no-restore -warnaserror
+
+      - name: Run xUnit tests
+        run: dotnet test .\tests\MakroWerkstatt.Tests\MakroWerkstatt.Tests.csproj -c Release --no-build --no-restore
+
+      - name: Run console smoke test
+        run: dotnet run --project .\tools\SmokeTests\SmokeTests.csproj -c Release --no-build --no-restore
+
+      - name: Publish ZIP und Prüfsummen
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\publish-windows.ps1 -NoShortcut
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: MakroWerkstatt-${{ steps.version.outputs.version }}-win-x64
+          path: |
+            dist/MakroWerkstatt-${{ steps.version.outputs.version }}-win-x64.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      # Ein GitHub Release wird nicht automatisch erstellt. Nach ausdrücklicher Freigabe
+      # den folgenden Schritt aktivieren und contents: write nur für diesen Zweck erteilen.
+      # - name: GitHub Release nach Freigabe erstellen
+      #   uses: softprops/action-gh-release@v2
+      #   with:
+      #     files: |
+      #       dist/MakroWerkstatt-${{ steps.version.outputs.version }}-win-x64.zip
+      #       dist/SHA256SUMS.txt

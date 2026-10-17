@@ -20,6 +20,21 @@ dotnet run --project .\MakroWerkstatt.csproj
 
 Dafür wird das .NET 8 SDK mit Windows-Desktop-Unterstützung benötigt. Der gewählte Stack ist **C#/.NET 8 und WPF**: native Windows-Oberfläche, globale Windows-Eingabehooks und keine Drittanbieterpakete.
 
+## Release erstellen
+
+1. Hebe `<Version>` in `MakroWerkstatt.csproj` im Format `x.y.z` an und pflege die belegten Änderungen in `CHANGELOG.md`.
+2. Committe die Änderung und setze einen passenden Tag, zum Beispiel `git tag v1.1.0` und `git push origin v1.1.0`. Der Tag muss exakt zur Projektversion passen.
+3. Der Tag startet `.github/workflows/release.yml`. Der Workflow baut, führt die xUnit- und Smoke-Tests aus und lädt das versionierte ZIP sowie `SHA256SUMS.txt` als Artefakt hoch. Ein GitHub Release wird nicht automatisch veröffentlicht.
+4. Vergleiche den SHA-256-Wert aus `SHA256SUMS.txt` mit `Get-FileHash`:
+
+   ```powershell
+   Get-Content .\SHA256SUMS.txt
+   Get-FileHash .\MakroWerkstatt-1.1.0-win-x64.zip -Algorithm SHA256
+   Get-FileHash .\MakroWerkstatt.exe -Algorithm SHA256
+   ```
+
+Die EXE ist nicht signiert. Windows SmartScreen kann deshalb beim ersten Start warnen. `tools\publish-windows.ps1 -NoShortcut` erstellt das Releasepaket, ohne die Desktop-Verknüpfung anzufassen; der normale Aufruf aktualisiert diese weiterhin.
+
 ## Aufnahme und Bedienung
 
 1. **Neue Aufnahme** ausdrücklich anklicken oder das globale Kürzel **F9** drücken; beim Start muss der Hinweis zu vertraulichen Eingaben bestätigt werden.

@@ -17,7 +17,7 @@ $trueCondition = [System.Windows.Automation.Condition]::TrueCondition
 function Find-AppWindow {
     $windows = $root.FindAll([System.Windows.Automation.TreeScope]::Children, $trueCondition)
     foreach ($window in $windows) {
-        if ($window.Current.Name -eq 'MakroWerkstatt' -and $window.Current.ProcessId -eq $appProcess.Id) { return $window }
+        if ($window.Current.Name -like 'MakroWerkstatt *' -and $window.Current.ProcessId -eq $appProcess.Id) { return $window }
     }
     return $null
 }
