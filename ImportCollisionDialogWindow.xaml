@@ -1,0 +1,26 @@
+<Window x:Class="MakroWerkstatt.ImportCollisionDialogWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Makronamen bereits vorhanden" Width="470" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Background="#F5F7FA"
+        FontFamily="Segoe UI" FontSize="13">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="Ein Makro mit diesem Namen ist bereits vorhanden." FontSize="17" FontWeight="SemiBold"
+                   Foreground="#14243A" TextWrapping="Wrap" />
+        <TextBlock Grid.Row="1" Text="Wähle, was mit diesem einzelnen Import passieren soll. Überschreiben erfordert eine weitere Bestätigung."
+                   Margin="0,10,0,18" Foreground="#45566C" TextWrapping="Wrap" />
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Überspringen" MinWidth="105" Padding="10,7" Margin="0,0,7,0" IsDefault="True"
+                    Click="Skip_Click" AutomationProperties.AutomationId="ImportCollisionSkipButton" />
+            <Button Content="Als Kopie importieren" MinWidth="145" Padding="10,7" Margin="0,0,7,0"
+                    Click="Copy_Click" AutomationProperties.AutomationId="ImportCollisionCopyButton" />
+            <Button Content="Überschreiben" MinWidth="110" Padding="10,7"
+                    Click="Overwrite_Click" AutomationProperties.AutomationId="ImportCollisionOverwriteButton" />
+        </StackPanel>
+    </Grid>
+</Window>

@@ -224,6 +224,35 @@ public sealed class MacroExportService
         }
     }
 
+    public ImportResult ImportFile(string path, ReadOnlySpan<char> passphrase)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        byte[]? file = null;
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (stream.Length > _maximumFileBytes)
+                throw new MacroExportException("Die Exportdatei ist größer als 50 MB.");
+            file = new byte[checked((int)stream.Length)];
+            stream.ReadExactly(file);
+            if (stream.ReadByte() != -1)
+                throw new MacroExportException("Die Exportdatei ist größer als 50 MB.");
+            return Import(file, passphrase);
+        }
+        catch (MacroExportException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
+        {
+            throw new MacroExportException("Die Exportdatei konnte nicht gelesen werden.");
+        }
+        finally
+        {
+            Zero(file);
+        }
+    }
+
     private ImportResult ReadPayload(byte[] plaintext)
     {
         try

@@ -24,6 +24,17 @@ public sealed class WpfDialogService(Window owner) : IDialogService
         "Bestehende Makros verschlüsseln", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)
         == MessageBoxResult.Yes;
 
+    public ImportCollisionAction ChooseImportCollisionAction()
+    {
+        var dialog = new ImportCollisionDialogWindow { Owner = owner };
+        return dialog.ShowDialog() == true ? dialog.Action : ImportCollisionAction.Skip;
+    }
+
+    public bool ConfirmImportOverwrite() => MessageBox.Show(owner,
+        "Ein vorhandenes Makro wird ersetzt. Möchtest du ausdrücklich fortfahren?",
+        "Makro überschreiben bestätigen", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)
+        == MessageBoxResult.Yes;
+
     public ClosePromptChoice ConfirmCloseWithUnsavedChanges() => MessageBox.Show(owner,
         "Es gibt noch nicht gespeicherte Makroänderungen. Möchtest du sie vor dem Schließen speichern?",
         "Makro nicht gespeichert", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel) switch

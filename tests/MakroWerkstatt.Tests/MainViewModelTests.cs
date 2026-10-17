@@ -258,4 +258,140 @@ public sealed class MainViewModelTests
         Assert.True(!string.Join("\n", dialogs.Messages.Select(message => message.Message))
             .Contains("synthetic unreadable", StringComparison.Ordinal), "A macro name appeared in a dialog.");
     }
+
+    [Fact]
+    public void Import_collision_defaults_to_skip_without_overwrite_confirmation()
+    {
+        using var context = new TestContext();
+        var existing = new MacroDocument { Name = "synthetic collision", Actions = [] };
+        context.Storage.Save(existing, encrypt: false);
+        var import = new MacroDocument { Name = existing.Name, Actions = [new MacroAction { Type = MacroActionType.KeyDown, KeyCode = 65 }] };
+        var importPath = WriteExport(context, [import]);
+        var dialogs = new FakeDialogService();
+        using var viewModel = CreateImportViewModel(context, dialogs, importPath);
+        viewModel.LoadLibrary(showWarnings: false);
+
+        viewModel.ImportMacrosCommand.Execute(null);
+
+        Assert.Equal(1, dialogs.ImportCollisionPromptCount);
+        Assert.Equal(0, dialogs.ImportOverwritePromptCount);
+        Assert.Empty(context.Storage.LoadById(existing.Id).Actions);
+        Assert.Contains("0 importiert, 1 übersprungen, 0 ungültig", viewModel.FooterMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Import_collision_can_create_a_uniquely_named_copy()
+    {
+        using var context = new TestContext();
+        var existing = new MacroDocument { Name = "synthetic collision", Actions = [] };
+        context.Storage.Save(existing, encrypt: false);
+        var import = new MacroDocument { Name = existing.Name, Actions = [new MacroAction { Type = MacroActionType.KeyDown, KeyCode = 65 }] };
+        var importPath = WriteExport(context, [import]);
+        var dialogs = new FakeDialogService { ImportCollisionAction = ImportCollisionAction.Copy };
+        using var viewModel = CreateImportViewModel(context, dialogs, importPath);
+        viewModel.LoadLibrary(showWarnings: false);
+
+        viewModel.ImportMacrosCommand.Execute(null);
+
+        Assert.Equal(0, dialogs.ImportOverwritePromptCount);
+        Assert.Equal(2, context.Storage.LoadAll(out _).Count);
+        var copied = context.Storage.LoadAll(out _).Single(item => item.Id != existing.Id);
+        Assert.True(copied.Name.EndsWith(" (Import)", StringComparison.Ordinal), "The imported copy did not receive a unique suffix.");
+        Assert.NotEqual(existing.Id, copied.Id);
+    }
+
+    [Fact]
+    public void Import_collision_overwrite_requires_and_honors_separate_confirmation()
+    {
+        using var context = new TestContext();
+        var existing = new MacroDocument { Name = "synthetic collision", Actions = [] };
+        context.Storage.Save(existing, encrypt: false);
+        var import = new MacroDocument { Name = existing.Name, Actions = [new MacroAction { Type = MacroActionType.KeyDown, KeyCode = 65 }] };
+        var importPath = WriteExport(context, [import]);
+        var dialogs = new FakeDialogService
+        {
+            ImportCollisionAction = ImportCollisionAction.Overwrite,
+            ImportOverwriteConfirmed = false
+        };
+        using var viewModel = CreateImportViewModel(context, dialogs, importPath);
+        viewModel.LoadLibrary(showWarnings: false);
+
+        viewModel.ImportMacrosCommand.Execute(null);
+
+        Assert.Equal(1, dialogs.ImportOverwritePromptCount);
+        Assert.Empty(context.Storage.LoadById(existing.Id).Actions);
+        Assert.Single(context.Storage.LoadAll(out _));
+    }
+
+    [Fact]
+    public void Confirmed_import_overwrite_uses_existing_identifier_and_encryption_setting()
+    {
+        using var context = new TestContext();
+        var existing = new MacroDocument { Name = "synthetic collision", Actions = [] };
+        context.Storage.Save(existing, encrypt: false);
+        var import = new MacroDocument { Name = existing.Name, Actions = [new MacroAction { Type = MacroActionType.KeyDown, KeyCode = 65 }] };
+        var importPath = WriteExport(context, [import]);
+        var dialogs = new FakeDialogService
+        {
+            ImportCollisionAction = ImportCollisionAction.Overwrite,
+            ImportOverwriteConfirmed = true
+        };
+        using var viewModel = CreateImportViewModel(context, dialogs, importPath);
+        viewModel.LoadLibrary(showWarnings: false);
+        viewModel.EncryptMacros = true;
+
+        viewModel.ImportMacrosCommand.Execute(null);
+
+        var stored = context.Storage.LoadById(existing.Id);
+        Assert.Single(stored.Actions);
+        Assert.Equal(65, stored.Actions[0].KeyCode);
+        Assert.Equal(3, System.Text.Json.JsonDocument.Parse(
+            File.ReadAllBytes(Path.Combine(context.Storage.MacroFolder, $"{existing.Id:N}.json")))
+            .RootElement.GetProperty("formatVersion").GetInt32());
+    }
+
+    [Theory]
+    [InlineData(true, 3)]
+    [InlineData(false, 2)]
+    public void Imported_macro_uses_current_storage_encryption_setting(bool encrypt, int expectedFormat)
+    {
+        using var context = new TestContext();
+        var imported = new MacroDocument { Name = "synthetic imported", Actions = [] };
+        var importPath = WriteExport(context, [imported]);
+        using var viewModel = CreateImportViewModel(context, new FakeDialogService(), importPath);
+        viewModel.LoadLibrary(showWarnings: false);
+        viewModel.EncryptMacros = encrypt;
+
+        viewModel.ImportMacrosCommand.Execute(null);
+
+        using var saved = System.Text.Json.JsonDocument.Parse(
+            File.ReadAllBytes(Path.Combine(context.Storage.MacroFolder, $"{imported.Id:N}.json")));
+        Assert.Equal(expectedFormat, saved.RootElement.GetProperty("formatVersion").GetInt32());
+    }
+
+    private static MainViewModel CreateImportViewModel(TestContext context, FakeDialogService dialogs, string importPath)
+    {
+        var fileDialogs = new FakeFileDialogService { OpenPath = importPath };
+        return new MainViewModel(context.Storage, dialogs, fileDialogs: fileDialogs,
+            passphraseDialogs: new FakePassphraseDialogService(), exportService: new MacroExportService(100, 10));
+    }
+
+    private static string WriteExport(TestContext context, IReadOnlyList<MacroDocument> macros)
+    {
+        var path = Path.Combine(context.RootPath, $"{Guid.NewGuid():N}.mwexport");
+        var passphrase = "synthetic passphrase for tests".ToCharArray();
+        byte[]? bytes = null;
+        try
+        {
+            bytes = new MacroExportService(100, 10).Export(macros, passphrase);
+            File.WriteAllBytes(path, bytes);
+        }
+        finally
+        {
+            if (bytes is not null) System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes);
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(
+                System.Runtime.InteropServices.MemoryMarshal.AsBytes(passphrase.AsSpan()));
+        }
+        return path;
+    }
 }

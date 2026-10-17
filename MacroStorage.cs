@@ -192,6 +192,8 @@ public sealed class MacroStorage
         if (File.Exists(path)) File.Delete(path);
     }
 
+    internal bool HasStoredFile(Guid id) => File.Exists(GetMacroPath(id));
+
     public MacroSettings LoadSettings()
     {
         try

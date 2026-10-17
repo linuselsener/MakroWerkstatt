@@ -64,6 +64,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public ICommand EncryptExistingMacrosCommand { get; }
     public ICommand ExportAllMacrosCommand { get; }
     public ICommand ExportSelectedMacroCommand { get; }
+    public ICommand ImportMacrosCommand { get; }
     public ICommand PlayCommand { get; }
     public ICommand StopPlaybackCommand { get; }
     public ICommand StartRecordingCommand { get; }
@@ -271,6 +272,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         EncryptExistingMacrosCommand = new RelayCommand(EncryptExistingMacros, () => !IsBusy);
         ExportAllMacrosCommand = new RelayCommand(() => ExportMacros(selectedOnly: false), () => !IsBusy && Library.Count > 0);
         ExportSelectedMacroCommand = new RelayCommand(() => ExportMacros(selectedOnly: true), () => !IsBusy && SelectedLibraryItem is not null);
+        ImportMacrosCommand = new RelayCommand(ImportMacros, () => !IsBusy);
         PlayCommand = new RelayCommand(StartPlayback, CanPlay);
         StopPlaybackCommand = new RelayCommand(StopPlayback, () => IsPlaying);
         StartRecordingCommand = new RelayCommand(StartRecording, () => !IsBusy);
@@ -441,6 +443,128 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                     System.Runtime.InteropServices.MemoryMarshal.AsBytes(passphrase.AsSpan()));
             if (exportBytes is not null) System.Security.Cryptography.CryptographicOperations.ZeroMemory(exportBytes);
         }
+    }
+
+    private void ImportMacros()
+    {
+        if (IsBusy) return;
+        if (IsDirty)
+        {
+            _dialogs.Show("Speichere oder verwirf zuerst die ungespeicherten Änderungen, bevor du Makros importierst.",
+                "Import gerade nicht möglich", DialogKind.Warning);
+            return;
+        }
+
+        var source = _fileDialogs.OpenMacroExport();
+        if (string.IsNullOrWhiteSpace(source)) return;
+
+        char[]? passphrase = null;
+        try
+        {
+            passphrase = _passphraseDialogs.RequestPassphrase(confirm: false);
+            if (passphrase is null) return;
+
+            var export = _exportService.ImportFile(source, passphrase);
+            var importedCount = 0;
+            var skippedCount = 0;
+            foreach (var macro in export.Macros)
+            {
+                var existing = Library.FirstOrDefault(item => item.Id == macro.Id
+                    || string.Equals(item.Name, macro.Name, StringComparison.OrdinalIgnoreCase));
+                var storedIdExists = existing is null && _storage.HasStoredFile(macro.Id);
+                if (existing is not null || storedIdExists)
+                {
+                    var action = _dialogs.ChooseImportCollisionAction();
+                    if (action == ImportCollisionAction.Skip)
+                    {
+                        skippedCount++;
+                        continue;
+                    }
+                    if (action == ImportCollisionAction.Overwrite)
+                    {
+                        if (!_dialogs.ConfirmImportOverwrite())
+                        {
+                            skippedCount++;
+                            continue;
+                        }
+                        if (existing is not null) macro.Id = existing.Id;
+                    }
+                    else
+                    {
+                        AssignUniqueCopyIdentity(macro);
+                        existing = null;
+                    }
+                }
+
+                try
+                {
+                    _storage.Save(macro, EncryptMacros);
+                    UpsertImportedMacro(macro, existing);
+                    importedCount++;
+                }
+                catch (Exception)
+                {
+                    skippedCount++;
+                }
+            }
+
+            FooterMessage = $"Makroimport abgeschlossen · {importedCount} importiert, {skippedCount} übersprungen, {export.InvalidCount} ungültig";
+            _dialogs.Show($"Importiert: {importedCount}\nÜbersprungen: {skippedCount}\nUngültig: {export.InvalidCount}",
+                "Makroimport abgeschlossen",
+                skippedCount == 0 && export.InvalidCount == 0 ? DialogKind.Information : DialogKind.Warning);
+        }
+        catch (Exception)
+        {
+            _dialogs.Show("Falsche Passphrase oder beschädigte Datei.", "Import nicht möglich", DialogKind.Error);
+        }
+        finally
+        {
+            if (passphrase is not null)
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(
+                    System.Runtime.InteropServices.MemoryMarshal.AsBytes(passphrase.AsSpan()));
+        }
+    }
+
+    private void AssignUniqueCopyIdentity(MacroDocument macro)
+    {
+        var baseName = macro.Name;
+        for (var number = 1; ; number++)
+        {
+            var suffix = number == 1 ? " (Import)" : $" (Import {number})";
+            var prefixLength = Math.Max(1, 100 - suffix.Length);
+            var candidate = baseName[..Math.Min(baseName.Length, prefixLength)].TrimEnd() + suffix;
+            if (candidate.Length <= 100 && !Library.Any(item => string.Equals(item.Name, candidate, StringComparison.OrdinalIgnoreCase)))
+            {
+                macro.Name = candidate;
+                break;
+            }
+        }
+
+        do { macro.Id = Guid.NewGuid(); } while (_storage.HasStoredFile(macro.Id));
+        macro.UpdatedUtc = DateTimeOffset.UtcNow;
+    }
+
+    private void UpsertImportedMacro(MacroDocument macro, MacroDocument? previous)
+    {
+        var index = previous is null ? -1 : Library.IndexOf(previous);
+        if (index < 0) index = Library.ToList().FindIndex(item => item.Id == macro.Id);
+        if (index >= 0) Library[index] = macro;
+        else Library.Insert(0, macro);
+
+        var wasSelected = SelectedLibraryItem?.Id == macro.Id;
+        var wasCurrent = CurrentMacro?.Id == macro.Id;
+        if (wasCurrent)
+        {
+            CurrentMacro = macro;
+            _macroName = macro.Name;
+            OnPropertyChanged(nameof(MacroName));
+            CurrentIsSaved = true;
+            IsDirty = false;
+            Actions.Clear();
+            foreach (var action in macro.Actions) Actions.Add(action);
+        }
+        if (wasSelected) SetSelectedLibraryItem(macro);
+        RaiseCommandStates();
     }
 
     private void DeleteCurrentMacro()
@@ -930,6 +1054,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private void SetSelectedLibraryItem(MacroDocument? item)
     {
         SetProperty(ref _selectedLibraryItem, item, nameof(SelectedLibraryItem));
+        RaiseCommandStates();
     }
 
     public bool CanDiscardCurrentChanges()
@@ -1096,6 +1221,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ((RelayCommand)EncryptExistingMacrosCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ExportAllMacrosCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ExportSelectedMacroCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ImportMacrosCommand).RaiseCanExecuteChanged();
         ((RelayCommand)PlayCommand).RaiseCanExecuteChanged();
         ((RelayCommand)StopPlaybackCommand).RaiseCanExecuteChanged();
         ((RelayCommand)StartRecordingCommand).RaiseCanExecuteChanged();

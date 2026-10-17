@@ -51,7 +51,11 @@ internal sealed class FakeDialogService : IDialogService
     public bool DiscardChanges { get; set; } = true;
     public bool DeleteMacro { get; set; } = true;
     public bool EncryptExistingMacros { get; set; } = true;
+    public ImportCollisionAction ImportCollisionAction { get; set; } = ImportCollisionAction.Skip;
+    public bool ImportOverwriteConfirmed { get; set; }
     public int? ConfirmedMigrationCount { get; private set; }
+    public int ImportCollisionPromptCount { get; private set; }
+    public int ImportOverwritePromptCount { get; private set; }
     public List<(string Message, string Title, DialogKind Kind)> Messages { get; } = [];
 
     public bool ConfirmRecordingConsent() => RecordingConsent;
@@ -61,6 +65,16 @@ internal sealed class FakeDialogService : IDialogService
     {
         ConfirmedMigrationCount = macroCount;
         return EncryptExistingMacros;
+    }
+    public ImportCollisionAction ChooseImportCollisionAction()
+    {
+        ImportCollisionPromptCount++;
+        return ImportCollisionAction;
+    }
+    public bool ConfirmImportOverwrite()
+    {
+        ImportOverwritePromptCount++;
+        return ImportOverwriteConfirmed;
     }
     public ClosePromptChoice ConfirmCloseWithUnsavedChanges() => ClosePromptChoice.Discard;
     public void Show(string message, string title, DialogKind kind) => Messages.Add((message, title, kind));
