@@ -56,9 +56,19 @@ Das Format-2-Payload-Dokument enthält eine stabile ID, Name, Erstellungs- und �
 
 Standardmäßig verschlüsselt die App das gesamte Makrodokument einschließlich Name, Zeitangaben und Aktionen mit Windows DPAPI für das aktuelle Benutzerkonto. Die Einstellung **Makros verschlüsseln** kann neue Speichervorgänge auf das bisherige Klartextformat 2 umstellen. Einstellungen wie Kürzel und Wiedergabe-Timing bleiben unverschlüsselt; sie enthalten keine aufgezeichneten Eingaben.
 
-Verschlüsselte Makros lassen sich nur mit dem Windows-Benutzerkonto öffnen, für das sie geschützt wurden. Eine Sicherung der Makrodateien allein garantiert daher keine Wiederherstellung: Nach einem Rechnerwechsel oder Verlust des Windows-Profils können verschlüsselte Makros unlesbar sein. Plane Backups so, dass das zugehörige Windows-Profil erhalten und wiederherstellbar bleibt. Die App entschlüsselt bestehende Dateien beim Laden nur im Arbeitsspeicher und ersetzt sie nicht automatisch.
+Verschlüsselte lokale Makros lassen sich nur mit dem Windows-Benutzerkonto öffnen, für das sie geschützt wurden. Eine Sicherung der lokalen Makrodateien allein garantiert daher keine Wiederherstellung: Nach einem Rechnerwechsel oder Verlust des Windows-Profils können diese Dateien unlesbar sein. Für kontoübergreifende Backups verwende den passphrase-verschlüsselten Export. Die App entschlüsselt bestehende Dateien beim Laden nur im Arbeitsspeicher und ersetzt sie nicht automatisch.
 
 Makros können weiterhin Passwörter, Nachrichten und andere vertrauliche Eingaben enthalten. DPAPI schützt gespeicherte Dateien im Ruhezustand, aber nicht vor Malware, die im selben Windows-Benutzerkonto ausgeführt wird. Behandle gespeicherte oder bewusst unverschlüsselte Makros weiterhin vertraulich.
+
+## Export und Import
+
+Mit **Alle exportieren** werden alle lokal lesbaren Makros in eine `.mwexport`-Datei geschrieben. **Auswahl exportieren** enthält nur das ausgewählte, lokal gespeicherte Makro. Der Export ist immer verschlüsselt; einen Klartext-Export gibt es nicht. Nicht lesbare Makrodateien werden beim Export übersprungen und in der Ergebnisübersicht mitgezählt.
+
+Die Datei ist ein JSON-Umschlag mit dem separaten `exportFormat: 1`. Der Umschlag nennt `kdf: "pbkdf2-sha256"` mit standardmäßig 600.000 Iterationen sowie zufälliges Salt mit 16 Byte und Nonce mit 12 Byte. `cipher: "aes-256-gcm"` verwendet einen 256-Bit-Schlüssel und einen 16-Byte-Authentifizierungstag. Die Headerwerte werden authentifiziert; der Klartext mit den vollständigen Format-2-Makrodokumenten liegt nur innerhalb der Verschlüsselung. Beim Import werden 600.000 bis 5.000.000 Iterationen, höchstens 50 MB und höchstens 10.000 Makros akzeptiert. Diese Formatparameter sind keine Geheimnisse und ersetzen keine starke Passphrase.
+
+Beim Export muss die Passphrase mindestens 12 Zeichen lang sein und zweimal eingegeben werden. **Die Passphrase wird nicht gespeichert und kann nicht wiederhergestellt werden. Passphrase vergessen = Export unlesbar.** Ein Export ist so sicher wie seine Passphrase. Verwende eine starke, einzigartige Passphrase und bewahre sie getrennt von der Exportdatei auf. Bewahre die Exportdatei außerdem an einem sicheren Ort getrennt von diesem Rechner auf.
+
+Beim Import wird die Datei zunächst geprüft und entschlüsselt; falsche Passphrase und beschädigte Datei werden bewusst mit derselben neutralen Meldung behandelt. Ungültige Makros werden einzeln gezählt und die übrigen können weiter importiert werden. Namenskollisionen werden standardmäßig übersprungen. Eine Kopie erhält einen eindeutigen Namenszusatz; Überschreiben verlangt eine zusätzliche ausdrückliche Bestätigung. Importierte Makros werden gemäß **Makros verschlüsseln** gespeichert: bei aktivierter Einstellung im lokalen Format 3 mit DPAPI, sonst im lokalen Format 2.
 
 ## Tastenkürzel
 
@@ -81,7 +91,8 @@ Makros können weiterhin Passwörter, Nachrichten und andere vertrauliche Eingab
 ## Projektdateien
 
 - `MakroWerkstatt.csproj` – WPF-App
-- `MacroModels.cs`, `MacroStorage.cs` – Aktionsmodell und versioniertes lokales JSON
+- `MacroModels.cs`, `MacroStorage.cs`, `MacroExportService.cs` – Aktionsmodell, lokales Format und passphrase-verschlüsseltes Exportformat
+- `IFileDialogService.cs`, `MacroExportFileWriter.cs` – Datei-Auswahlabstraktion und atomarer Exportdateischreiber
 - `GlobalInputHook.cs`, `MacroPlayback.cs` – Windows-Hooks und Eingabewiedergabe
 - `Assets\makrowerkstatt.svg` – editierbare Symbolquelle
 - `Assets\makrowerkstatt.ico` – mehrstufiges Windows-Symbol

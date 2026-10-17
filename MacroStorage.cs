@@ -455,13 +455,7 @@ public sealed class MacroStorage
 
     private static void LogFailure(string component, Exception exception)
     {
-        var errorCode = exception switch
-        {
-            MacroProtectionException protection => protection.Win32ErrorCode,
-            MacroDecryptionException decryption => decryption.Win32ErrorCode,
-            _ => null
-        };
-        FileLogger.Error(component, $"Fehlertyp={exception.GetType().Name}", win32ErrorCode: errorCode);
+        FileLogger.Error(component, $"Fehlertyp={exception.GetType().Name}");
     }
 
     private static bool DocumentsMatch(MacroDocument expected, MacroDocument actual)
