@@ -138,9 +138,20 @@ if (-not (Test-Path -LiteralPath $appExe)) {
 $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('MakroWerkstatt-verify-ui-' + [guid]::NewGuid().ToString('N'))
 $macroFolder = Join-Path $testRoot 'Makros'
 $previousDataDirectory = $env:MAKROWERKSTATT_DATA_DIR
+$appProcess = $null
 $env:MAKROWERKSTATT_DATA_DIR = $testRoot
 try {
     $appProcess = Start-Process -FilePath $appExe -PassThru
+}
+catch {
+    $tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+    $resolvedTestRoot = [System.IO.Path]::GetFullPath($testRoot)
+    if ($resolvedTestRoot.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase) -and
+        (Split-Path -Leaf $resolvedTestRoot).StartsWith('MakroWerkstatt-verify-ui-', [System.StringComparison]::Ordinal) -and
+        [System.IO.Directory]::Exists($resolvedTestRoot)) {
+        [System.IO.Directory]::Delete($resolvedTestRoot, $true)
+    }
+    throw
 }
 finally {
     $env:MAKROWERKSTATT_DATA_DIR = $previousDataDirectory
@@ -234,39 +245,43 @@ try {
     Write-Host 'OK: isolierter Datenspeicher, standardmäßige Verschlüsselung, Datenschutz-Hinweis, Aufnahme, Pause/Fortsetzen, Verwerfen, lokales JSON öffnen, Countdown, Wiedergabestopp und Makro löschen.'
 }
 finally {
-    $window = Find-AppWindow
-    if ($null -ne $window) {
-        $stop = Find-ButtonLike $window 'Wiedergabe stoppen'
-        if ($null -ne $stop -and $stop.Current.IsEnabled) {
-            $stop.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-            Start-Sleep -Milliseconds 350
-        }
-        $discard = Find-ButtonLike $window 'Aufnahme löschen'
-        if ($null -ne $discard -and $discard.Current.IsEnabled) {
-            $discard.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-        }
-        foreach ($testFile in $createdTestFiles) {
-            $resolvedFolder = [System.IO.Path]::GetFullPath($macroFolder) + [System.IO.Path]::DirectorySeparatorChar
-            if ($testFile.StartsWith($resolvedFolder, [System.StringComparison]::OrdinalIgnoreCase) -and [System.IO.File]::Exists($testFile)) {
-                [System.IO.File]::Delete($testFile)
+    try {
+        $window = Find-AppWindow
+        if ($null -ne $window) {
+            $stop = Find-ButtonLike $window 'Wiedergabe stoppen'
+            if ($null -ne $stop -and $stop.Current.IsEnabled) {
+                $stop.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+                Start-Sleep -Milliseconds 350
+            }
+            $discard = Find-ButtonLike $window 'Aufnahme löschen'
+            if ($null -ne $discard -and $discard.Current.IsEnabled) {
+                $discard.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+            }
+            foreach ($testFile in $createdTestFiles) {
+                $resolvedFolder = [System.IO.Path]::GetFullPath($macroFolder) + [System.IO.Path]::DirectorySeparatorChar
+                if ($testFile.StartsWith($resolvedFolder, [System.StringComparison]::OrdinalIgnoreCase) -and [System.IO.File]::Exists($testFile)) {
+                    [System.IO.File]::Delete($testFile)
+                }
+            }
+            if ($createdTestFiles.Count -gt 0) {
+                $window = Find-AppWindow
+                if ($null -ne $window) { Click-ButtonLike $window '↻' }
             }
         }
-        if ($createdTestFiles.Count -gt 0) {
-            $window = Find-AppWindow
-            if ($null -ne $window) { Click-ButtonLike $window '↻' }
+        if ($null -ne $appProcess -and -not $appProcess.HasExited) {
+            $appProcess.CloseMainWindow() | Out-Null
+            if (-not $appProcess.WaitForExit(5000)) {
+                Stop-Process -Id $appProcess.Id -Force
+            }
         }
     }
-    if ($null -ne $appProcess -and -not $appProcess.HasExited) {
-        $appProcess.CloseMainWindow() | Out-Null
-        if (-not $appProcess.WaitForExit(5000)) {
-            Stop-Process -Id $appProcess.Id -Force
+    finally {
+        $tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+        $resolvedTestRoot = [System.IO.Path]::GetFullPath($testRoot)
+        if ($resolvedTestRoot.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase) -and
+            (Split-Path -Leaf $resolvedTestRoot).StartsWith('MakroWerkstatt-verify-ui-', [System.StringComparison]::Ordinal) -and
+            [System.IO.Directory]::Exists($resolvedTestRoot)) {
+            [System.IO.Directory]::Delete($resolvedTestRoot, $true)
         }
-    }
-    $tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()) + [System.IO.Path]::DirectorySeparatorChar
-    $resolvedTestRoot = [System.IO.Path]::GetFullPath($testRoot)
-    if ($resolvedTestRoot.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase) -and
-        (Split-Path -Leaf $resolvedTestRoot).StartsWith('MakroWerkstatt-verify-ui-', [System.StringComparison]::Ordinal) -and
-        [System.IO.Directory]::Exists($resolvedTestRoot)) {
-        [System.IO.Directory]::Delete($resolvedTestRoot, $true)
     }
 }

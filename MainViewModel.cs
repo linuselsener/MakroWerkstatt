@@ -467,10 +467,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             var export = _exportService.ImportFile(source, passphrase);
             var importedCount = 0;
             var skippedCount = 0;
+            var knownMacros = _storage.LoadAll(out _).ToList();
             foreach (var macro in export.Macros)
             {
-                var existing = Library.FirstOrDefault(item => item.Id == macro.Id
-                    || string.Equals(item.Name, macro.Name, StringComparison.OrdinalIgnoreCase));
+                var existing = knownMacros.FirstOrDefault(item => item.Id == macro.Id
+                    || string.Equals(item.Name, macro.Name, StringComparison.OrdinalIgnoreCase))
+                    ?? Library.FirstOrDefault(item => item.Id == macro.Id
+                        || string.Equals(item.Name, macro.Name, StringComparison.OrdinalIgnoreCase));
                 var storedIdExists = existing is null && _storage.HasStoredFile(macro.Id);
                 if (existing is not null || storedIdExists)
                 {
@@ -500,6 +503,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 {
                     _storage.Save(macro, EncryptMacros);
                     UpsertImportedMacro(macro, existing);
+                    knownMacros.RemoveAll(item => item.Id == macro.Id
+                        || (existing is not null && item.Id == existing.Id));
+                    knownMacros.Add(macro);
                     importedCount++;
                 }
                 catch (Exception)

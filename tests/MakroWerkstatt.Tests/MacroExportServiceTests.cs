@@ -16,7 +16,7 @@ public sealed class MacroExportServiceTests
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
-    private static readonly char[] TestPassphrase = "synthetic test passphrase".ToCharArray();
+    private const string TestPassphrase = "synthetic test passphrase";
     private static MacroExportService FastService(int maxBytes = MacroExportService.MaximumFileBytes,
         int maxMacros = MacroExportService.MaximumMacroCount) => new(100, 10, maxBytes, maxMacros);
 
@@ -38,6 +38,22 @@ public sealed class MacroExportServiceTests
             Assert.Equal(0, result.InvalidCount);
             Assert.Equal(0, result.RejectedCount);
             for (var index = 0; index < expected.Length; index++) AssertDocumentsEqual(expected[index], result.Macros[index]);
+        }
+        finally { Zero(file); }
+    }
+
+    [Fact]
+    public void Production_iteration_count_completes_a_roundtrip()
+    {
+        var service = new MacroExportService();
+        byte[]? file = null;
+        try
+        {
+            var expected = Document("synthetic production KDF", [new MacroAction { Type = MacroActionType.KeyUp, KeyCode = 66 }]);
+            file = service.Export([expected], TestPassphrase);
+            var result = service.Import(file, TestPassphrase);
+            Assert.Single(result.Macros);
+            AssertDocumentsEqual(expected, result.Macros[0]);
         }
         finally { Zero(file); }
     }
@@ -168,6 +184,19 @@ public sealed class MacroExportServiceTests
             Assert.Throws<MacroExportException>(() => constrained.Import(file, TestPassphrase));
         }
         finally { Zero(file); }
+    }
+
+    [Fact]
+    public void Import_file_rejects_oversized_input_before_reading_it_into_memory()
+    {
+        using var context = new TestContext();
+        var path = Path.Combine(context.RootPath, "oversized.mwexport");
+        File.WriteAllBytes(path, new byte[65]);
+
+        var error = Assert.Throws<MacroExportException>(() => new MacroExportService(10, 10, maximumFileBytes: 64)
+            .ImportFile(path, TestPassphrase));
+
+        Assert.Contains("größer als 50 MB", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

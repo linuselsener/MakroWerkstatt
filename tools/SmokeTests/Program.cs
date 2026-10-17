@@ -235,6 +235,8 @@ sealed class TestDialogService : IDialogService
     public bool ConfirmDiscardChanges() => true;
     public bool ConfirmDeleteMacro(string name) => true;
     public bool ConfirmEncryptExistingMacros(int macroCount) => true;
+    public ImportCollisionAction ChooseImportCollisionAction() => ImportCollisionAction.Skip;
+    public bool ConfirmImportOverwrite() => false;
     public ClosePromptChoice ConfirmCloseWithUnsavedChanges() => ClosePromptChoice.Discard;
     public void Show(string message, string title, DialogKind kind) { }
 }
