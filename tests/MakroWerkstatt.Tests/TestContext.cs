@@ -66,6 +66,42 @@ internal sealed class FakeDialogService : IDialogService
     public void Show(string message, string title, DialogKind kind) => Messages.Add((message, title, kind));
 }
 
+internal sealed class FakeFileDialogService : IFileDialogService
+{
+    public string? SavePath { get; set; }
+    public string? OpenPath { get; set; }
+    public int SaveRequests { get; private set; }
+    public int OpenRequests { get; private set; }
+
+    public string? SaveMacroExport()
+    {
+        SaveRequests++;
+        return SavePath;
+    }
+
+    public string? OpenMacroExport()
+    {
+        OpenRequests++;
+        return OpenPath;
+    }
+}
+
+internal sealed class FakePassphraseDialogService : IPassphraseDialogService
+{
+    public string? Value { get; set; } = "synthetic passphrase for tests";
+    public int Requests { get; private set; }
+    public bool? LastConfirmOption { get; private set; }
+    public char[]? LastReturnedBuffer { get; private set; }
+
+    public char[]? RequestPassphrase(bool confirm)
+    {
+        Requests++;
+        LastConfirmOption = confirm;
+        LastReturnedBuffer = Value?.ToCharArray();
+        return LastReturnedBuffer;
+    }
+}
+
 internal sealed class DeterministicFakeProtector : IDataProtector
 {
     private static readonly byte[] Key = [0x37, 0xA1, 0x5C, 0xD2, 0x91, 0x08, 0x6F];

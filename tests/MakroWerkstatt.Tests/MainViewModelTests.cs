@@ -178,4 +178,84 @@ public sealed class MainViewModelTests
         Assert.Equal(new GlobalHotkey(0x70, HotkeyModifiers.Control | HotkeyModifiers.Shift),
             viewModel.RecordingHotkey);
     }
+
+    [Fact]
+    public void Export_all_uses_file_and_passphrase_services_and_clears_the_passphrase_buffer()
+    {
+        using var context = new TestContext();
+        context.Storage.Save(new MacroDocument { Name = "synthetic export source", Actions = [] });
+        var dialogs = new FakeDialogService();
+        var fileDialogs = new FakeFileDialogService { SavePath = Path.Combine(context.RootPath, "backup.mwexport") };
+        var passphraseDialogs = new FakePassphraseDialogService();
+        var service = new MacroExportService(100, 10);
+        using var viewModel = new MainViewModel(context.Storage, dialogs, fileDialogs: fileDialogs,
+            passphraseDialogs: passphraseDialogs, exportService: service);
+        viewModel.LoadLibrary(showWarnings: false);
+
+        viewModel.ExportAllMacrosCommand.Execute(null);
+
+        Assert.True(File.Exists(fileDialogs.SavePath), "The encrypted export file was not written.");
+        Assert.True(passphraseDialogs.LastConfirmOption == true, "The export passphrase prompt did not request confirmation.");
+        Assert.Equal(1, fileDialogs.SaveRequests);
+        Assert.Contains("1 exportiert, 0 übersprungen", viewModel.FooterMessage, StringComparison.Ordinal);
+        Assert.True(passphraseDialogs.LastReturnedBuffer!.All(character => character == '\0'),
+            "The passphrase buffer was not cleared after export.");
+
+        var bytes = File.ReadAllBytes(fileDialogs.SavePath!);
+        var passphrase = "synthetic passphrase for tests".ToCharArray();
+        try
+        {
+            var result = service.Import(bytes, passphrase);
+            Assert.Single(result.Macros);
+            Assert.True(result.Macros[0].Name == "synthetic export source", "The exported document name did not roundtrip.");
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes);
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(
+                System.Runtime.InteropServices.MemoryMarshal.AsBytes(passphrase.AsSpan()));
+        }
+    }
+
+    [Fact]
+    public void Export_rejects_short_passphrase_at_view_model_boundary_before_file_selection()
+    {
+        using var context = new TestContext();
+        context.Storage.Save(new MacroDocument { Name = "synthetic short passphrase source", Actions = [] });
+        var dialogs = new FakeDialogService();
+        var fileDialogs = new FakeFileDialogService { SavePath = Path.Combine(context.RootPath, "unused.mwexport") };
+        var passphraseDialogs = new FakePassphraseDialogService { Value = "short" };
+        using var viewModel = new MainViewModel(context.Storage, dialogs, fileDialogs: fileDialogs,
+            passphraseDialogs: passphraseDialogs, exportService: new MacroExportService(100, 10));
+        viewModel.LoadLibrary(showWarnings: false);
+
+        viewModel.ExportAllMacrosCommand.Execute(null);
+
+        Assert.Equal(0, fileDialogs.SaveRequests);
+        Assert.False(File.Exists(fileDialogs.SavePath));
+        Assert.Contains(dialogs.Messages, message => message.Title == "Passphrase zu kurz");
+        Assert.True(passphraseDialogs.LastReturnedBuffer!.All(character => character == '\0'),
+            "The short passphrase buffer was not cleared.");
+    }
+
+    [Fact]
+    public void Export_all_reports_unreadable_storage_entries_and_exports_readable_macros()
+    {
+        using var context = new TestContext();
+        context.WriteFixture(new MacroDocument { Name = "synthetic readable", Actions = [] });
+        context.Storage.Save(new MacroDocument { Name = "synthetic unreadable", Actions = [] });
+        context.Protector.FailUnprotect = true;
+        var dialogs = new FakeDialogService();
+        var fileDialogs = new FakeFileDialogService { SavePath = Path.Combine(context.RootPath, "partial.mwexport") };
+        using var viewModel = new MainViewModel(context.Storage, dialogs, fileDialogs: fileDialogs,
+            passphraseDialogs: new FakePassphraseDialogService(), exportService: new MacroExportService(100, 10));
+        viewModel.LoadLibrary(showWarnings: false);
+
+        viewModel.ExportAllMacrosCommand.Execute(null);
+
+        Assert.True(File.Exists(fileDialogs.SavePath), "The readable macro was not exported.");
+        Assert.Contains("1 exportiert, 1 übersprungen", viewModel.FooterMessage, StringComparison.Ordinal);
+        Assert.True(!string.Join("\n", dialogs.Messages.Select(message => message.Message))
+            .Contains("synthetic unreadable", StringComparison.Ordinal), "A macro name appeared in a dialog.");
+    }
 }

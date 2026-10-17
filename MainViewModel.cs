@@ -16,6 +16,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 {
     private readonly MacroStorage _storage;
     private readonly IDialogService _dialogs;
+    private readonly IFileDialogService _fileDialogs;
+    private readonly IPassphraseDialogService _passphraseDialogs;
+    private readonly MacroExportService _exportService;
+    private readonly MacroExportFileWriter _exportFileWriter;
     private readonly IInputCaptureService _inputCaptureService;
     private readonly SynchronizationContext? _uiContext = SynchronizationContext.Current;
     private readonly Stopwatch _recordClock = new();
@@ -58,6 +62,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public ICommand SaveMacroCommand { get; }
     public ICommand DeleteMacroCommand { get; }
     public ICommand EncryptExistingMacrosCommand { get; }
+    public ICommand ExportAllMacrosCommand { get; }
+    public ICommand ExportSelectedMacroCommand { get; }
     public ICommand PlayCommand { get; }
     public ICommand StopPlaybackCommand { get; }
     public ICommand StartRecordingCommand { get; }
@@ -103,11 +109,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             if (value is null)
             {
                 SetProperty(ref _selectedLibraryItem, null);
+                RaiseCommandStates();
                 return;
             }
             if (!CanDiscardCurrentChanges())
             {
                 OnPropertyChanged();
+                RaiseCommandStates();
                 return;
             }
             LoadSelectedMacro(value);
@@ -245,16 +253,24 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public string MacroCountText => Library.Count == 1 ? "1 Makro" : $"{Library.Count:N0} Makros";
     public string StorageFolderPath => _storage.MacroFolder;
 
-    public MainViewModel(MacroStorage storage, IDialogService dialogs, IInputCaptureService? inputCaptureService = null)
+    public MainViewModel(MacroStorage storage, IDialogService dialogs, IInputCaptureService? inputCaptureService = null,
+        IFileDialogService? fileDialogs = null, IPassphraseDialogService? passphraseDialogs = null,
+        MacroExportService? exportService = null, MacroExportFileWriter? exportFileWriter = null)
     {
         _storage = storage;
         _dialogs = dialogs;
+        _fileDialogs = fileDialogs ?? new UnavailableFileDialogService();
+        _passphraseDialogs = passphraseDialogs ?? new UnavailablePassphraseDialogService();
+        _exportService = exportService ?? new MacroExportService();
+        _exportFileWriter = exportFileWriter ?? new MacroExportFileWriter();
         _inputCaptureService = inputCaptureService ?? new InertInputCaptureService();
         RemoveActionCommand = new RelayCommand(RemoveSelectedAction, () => SelectedAction is not null && !IsBusy);
         ReloadLibraryCommand = new RelayCommand(ReloadLibrary, () => !IsBusy);
         SaveMacroCommand = new RelayCommand(() => SaveCurrentMacro(showSuccess: true), CanSaveMacro);
         DeleteMacroCommand = new RelayCommand(DeleteCurrentMacro, () => !IsBusy && CurrentIsSaved && CurrentMacro is not null);
         EncryptExistingMacrosCommand = new RelayCommand(EncryptExistingMacros, () => !IsBusy);
+        ExportAllMacrosCommand = new RelayCommand(() => ExportMacros(selectedOnly: false), () => !IsBusy && Library.Count > 0);
+        ExportSelectedMacroCommand = new RelayCommand(() => ExportMacros(selectedOnly: true), () => !IsBusy && SelectedLibraryItem is not null);
         PlayCommand = new RelayCommand(StartPlayback, CanPlay);
         StopPlaybackCommand = new RelayCommand(StopPlayback, () => IsPlaying);
         StartRecordingCommand = new RelayCommand(StartRecording, () => !IsBusy);
@@ -269,7 +285,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             UpdateEstimate();
             EstimateInvalidated?.Invoke(this, EventArgs.Empty);
         };
-        Library.CollectionChanged += (_, _) => OnPropertyChanged(nameof(MacroCountText));
+        Library.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(MacroCountText));
+            RaiseCommandStates();
+        };
         _inputCaptureService.ActionCaptured += InputCaptureService_ActionCaptured;
         _inputCaptureService.HotkeyPressed += InputCaptureService_HotkeyPressed;
         _inputCaptureService.EmergencyStopPressed += InputCaptureService_EmergencyStopPressed;
@@ -352,6 +372,75 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             _dialogs.Show($"„{name}“ wurde lokal gespeichert.\n\n{_storage.MacroFolder}",
                 "Makro gespeichert", DialogKind.Information);
         return true;
+    }
+
+    private void ExportMacros(bool selectedOnly)
+    {
+        if (IsBusy) return;
+        char[]? passphrase = null;
+        byte[]? exportBytes = null;
+        try
+        {
+            passphrase = _passphraseDialogs.RequestPassphrase(confirm: true);
+            if (passphrase is null) return;
+            if (passphrase.Length < MacroExportService.MinimumPassphraseLength)
+            {
+                _dialogs.Show("Die Passphrase muss mindestens 12 Zeichen lang sein.",
+                    "Passphrase zu kurz", DialogKind.Warning);
+                return;
+            }
+
+            IReadOnlyList<MacroDocument> documents;
+            var skipped = 0;
+            if (selectedOnly)
+            {
+                var selected = SelectedLibraryItem;
+                if (selected is null) return;
+                try
+                {
+                    documents = [_storage.LoadById(selected.Id)];
+                }
+                catch (Exception)
+                {
+                    documents = [];
+                    skipped = 1;
+                }
+            }
+            else
+            {
+                documents = _storage.LoadAll(out var warnings);
+                skipped = warnings.Count;
+            }
+
+            if (documents.Count == 0)
+            {
+                FooterMessage = $"Makroexport abgeschlossen · 0 exportiert, {skipped} übersprungen";
+                _dialogs.Show($"Makros exportiert: 0\nÜbersprungen: {skipped}",
+                    "Makroexport abgeschlossen", skipped == 0 ? DialogKind.Information : DialogKind.Warning);
+                return;
+            }
+
+            var destination = _fileDialogs.SaveMacroExport();
+            if (string.IsNullOrWhiteSpace(destination)) return;
+
+            exportBytes = _exportService.Export(documents, passphrase);
+            _exportFileWriter.WriteAtomically(destination, exportBytes);
+            FooterMessage = $"Makroexport abgeschlossen · {documents.Count} exportiert, {skipped} übersprungen";
+            _dialogs.Show($"Makros exportiert: {documents.Count}\nÜbersprungen: {skipped}",
+                "Makroexport abgeschlossen", skipped == 0 ? DialogKind.Information : DialogKind.Warning);
+        }
+        catch (Exception)
+        {
+            _dialogs.Show("Der verschlüsselte Export konnte nicht sicher erstellt oder gespeichert werden. Eine bestehende Zieldatei wurde nicht ersetzt.",
+                "Makroexport fehlgeschlagen", DialogKind.Error);
+        }
+        finally
+        {
+            if (passphrase is not null)
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(
+                    System.Runtime.InteropServices.MemoryMarshal.AsBytes(passphrase.AsSpan()));
+            if (exportBytes is not null) System.Security.Cryptography.CryptographicOperations.ZeroMemory(exportBytes);
+        }
     }
 
     private void DeleteCurrentMacro()
@@ -1005,6 +1094,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ((RelayCommand)SaveMacroCommand).RaiseCanExecuteChanged();
         ((RelayCommand)DeleteMacroCommand).RaiseCanExecuteChanged();
         ((RelayCommand)EncryptExistingMacrosCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ExportAllMacrosCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ExportSelectedMacroCommand).RaiseCanExecuteChanged();
         ((RelayCommand)PlayCommand).RaiseCanExecuteChanged();
         ((RelayCommand)StopPlaybackCommand).RaiseCanExecuteChanged();
         ((RelayCommand)StartRecordingCommand).RaiseCanExecuteChanged();

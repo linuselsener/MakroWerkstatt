@@ -54,6 +54,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
@@ -66,7 +67,18 @@
                     </Grid>
                     <Button x:Name="NewRecordingButton" Grid.Row="2" Content="●   Neue Aufnahme" Style="{StaticResource RecordButton}"
                             HorizontalContentAlignment="Center" Padding="12,12" Margin="0,0,0,16" Command="{Binding StartRecordingCommand}" />
-                    <ListBox x:Name="MacroListBox" Grid.Row="3" ItemsSource="{Binding Library}" SelectedItem="{Binding SelectedLibraryItem, Mode=TwoWay}"
+                    <Grid Grid.Row="3" Margin="0,-7,0,12">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Button x:Name="ExportAllMacrosButton" Content="Alle exportieren" Padding="5,7" Margin="0,0,4,0"
+                                FontSize="10" Command="{Binding ExportAllMacrosCommand}"
+                                AutomationProperties.AutomationId="ExportAllMacrosButton"
+                                ToolTip="Alle lesbaren Makros verschlüsselt exportieren" />
+                        <Button x:Name="ExportSelectedMacroButton" Grid.Column="1" Content="Auswahl exportieren" Padding="5,7" Margin="4,0,0,0"
+                                FontSize="10" Command="{Binding ExportSelectedMacroCommand}"
+                                AutomationProperties.AutomationId="ExportSelectedMacroButton"
+                                ToolTip="Das ausgewählte Makro verschlüsselt exportieren" />
+                    </Grid>
+                    <ListBox x:Name="MacroListBox" Grid.Row="4" ItemsSource="{Binding Library}" SelectedItem="{Binding SelectedLibraryItem, Mode=TwoWay}"
                              Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
@@ -111,7 +123,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <Border Grid.Row="4" Background="#223852" CornerRadius="9" Padding="12" Margin="0,12,0,0">
+                    <Border Grid.Row="5" Background="#223852" CornerRadius="9" Padding="12" Margin="0,12,0,0">
                         <StackPanel>
                             <TextBlock Text="DATENSCHUTZ" Foreground="#8EA6C1" FontSize="9" FontWeight="Bold" />
                             <TextBlock Text="Makros und Einstellungen bleiben auf diesem PC. Tastatureingaben können vertrauliche Texte enthalten."

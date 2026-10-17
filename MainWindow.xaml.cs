@@ -34,7 +34,8 @@ public partial class MainWindow : Window
         _inputCaptureService = new GlobalInputCaptureService(new WpfUiDispatcher(Dispatcher));
         var configuredDataDirectory = Environment.GetEnvironmentVariable("MAKROWERKSTATT_DATA_DIR");
         var storage = new MacroStorage(string.IsNullOrWhiteSpace(configuredDataDirectory) ? null : configuredDataDirectory);
-        _viewModel = new MainViewModel(storage, new WpfDialogService(this), _inputCaptureService)
+        _viewModel = new MainViewModel(storage, new WpfDialogService(this), _inputCaptureService,
+            new WpfFileDialogService(this), new WpfPassphraseDialogService(this))
         {
             ShouldIgnoreCapturedAction = ShouldIgnoreOwnWindowAction
         };
