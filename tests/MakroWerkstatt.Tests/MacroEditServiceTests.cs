@@ -108,6 +108,22 @@ public sealed class MacroEditServiceTests
     }
 
     [Fact]
+    public void Clear_history_removes_and_scrubs_all_snapshots()
+    {
+        var service = CreateService(KeyDown(0), KeyUp(1), Move(2));
+        Assert.True(service.TryEditAction(2, new MacroActionEdit(X: 42)));
+        Assert.True(service.CanUndo);
+
+        service.ClearHistory();
+
+        Assert.Equal(0, service.HistoryCount);
+        Assert.False(service.CanUndo);
+        Assert.False(service.CanRedo);
+        Assert.Empty(service.Actions);
+        Assert.Empty(service.LastSelectionIndices);
+    }
+
+    [Fact]
     public void Invalid_edits_are_rejected_without_changing_actions_or_history()
     {
         var service = CreateService(ButtonDown(0), ButtonUp(20), Move(30));

@@ -128,6 +128,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public bool CanCaptureActionKey => IsEditorEnabled && IsKeyActionSelected;
     public bool CanUndoActionEdit => _macroEditService.CanUndo;
     public bool CanRedoActionEdit => _macroEditService.CanRedo;
+    internal int EditorHistoryCount => _macroEditService.HistoryCount;
 
     public MacroDocument? CurrentMacro
     {
@@ -836,6 +837,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         _inputCaptureService.StatusChanged -= InputCaptureService_StatusChanged;
         _playbackCancellation?.Dispose();
         _playbackCancellation = null;
+        _macroEditService.ClearHistory();
     }
 
     public void UpdateEstimate()

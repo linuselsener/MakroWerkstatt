@@ -95,6 +95,41 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void Switching_macro_resets_undo_history_and_disposing_clears_it()
+    {
+        using var context = new TestContext();
+        context.Storage.Save(new MacroDocument
+        {
+            Name = "Synthetic first macro",
+            Actions = [new MacroAction { AtMs = 0, Type = MacroActionType.MouseMove, X = 1, Y = 2 }]
+        });
+        context.Storage.Save(new MacroDocument
+        {
+            Name = "Synthetic second macro",
+            Actions = [new MacroAction { AtMs = 0, Type = MacroActionType.MouseMove, X = 3, Y = 4 }]
+        });
+        var viewModel = new MainViewModel(context.Storage, new FakeDialogService());
+        viewModel.LoadLibrary(showWarnings: false);
+        viewModel.SelectedLibraryItem = viewModel.Library.Single(macro => macro.Name == "Synthetic first macro");
+        viewModel.SelectedAction = Assert.Single(viewModel.Actions);
+        viewModel.EditX = "9";
+        viewModel.ApplyActionEditsCommand.Execute(null);
+        Assert.True(viewModel.CanUndoActionEdit);
+
+        viewModel.SelectedLibraryItem = viewModel.Library.Single(macro => macro.Name == "Synthetic second macro");
+
+        Assert.False(viewModel.CanUndoActionEdit);
+        Assert.False(viewModel.CanRedoActionEdit);
+        Assert.Equal(1, viewModel.EditorHistoryCount);
+
+        viewModel.Dispose();
+
+        Assert.False(viewModel.CanUndoActionEdit);
+        Assert.False(viewModel.CanRedoActionEdit);
+        Assert.Equal(0, viewModel.EditorHistoryCount);
+    }
+
+    [Fact]
     public void Library_can_save_load_rename_and_delete_a_macro_in_storage()
     {
         using var context = new TestContext();

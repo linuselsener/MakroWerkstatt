@@ -16,9 +16,10 @@ public sealed class MacroEditService
 
     public bool CanUndo => _historyIndex > 0;
     public bool CanRedo => _historyIndex < _history.Count - 1;
-    public bool IsAtSavedState => _savedStateId == Current.StateId;
-    public IReadOnlyList<MacroAction> Actions => Current.Actions.Select(Clone).ToArray();
+    public bool IsAtSavedState => _historyIndex >= 0 && _savedStateId == Current.StateId;
+    public IReadOnlyList<MacroAction> Actions => _historyIndex < 0 ? [] : Current.Actions.Select(Clone).ToArray();
     public IReadOnlyList<int> LastSelectionIndices { get; private set; } = [];
+    internal int HistoryCount => _history.Count;
 
     public MacroEditService() => Reset(new MacroDocument(), [], isSaved: true);
 
@@ -26,12 +27,26 @@ public sealed class MacroEditService
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(actions);
+        ClearHistory();
         _document = CloneDocument(document);
         var snapshot = new Snapshot(++_nextStateId, actions.Select(Clone).ToList());
-        _history.Clear();
         _history.Add(snapshot);
         _historyIndex = 0;
         _savedStateId = isSaved ? snapshot.StateId : null;
+        LastSelectionIndices = [];
+    }
+
+    public void ClearHistory()
+    {
+        foreach (var snapshot in _history)
+        {
+            ClearActions(snapshot.Actions);
+        }
+        _history.Clear();
+        ClearActions(_document.Actions);
+        _document = new MacroDocument { Actions = [] };
+        _historyIndex = -1;
+        _savedStateId = null;
         LastSelectionIndices = [];
     }
 
@@ -251,6 +266,23 @@ public sealed class MacroEditService
     }
 
     private Snapshot Current => _history[_historyIndex];
+
+    private static void ClearActions(List<MacroAction> actions)
+    {
+        foreach (var action in actions)
+        {
+            action.AtMs = 0;
+            action.Type = default;
+            action.X = 0;
+            action.Y = 0;
+            action.KeyCode = 0;
+            action.ScanCode = 0;
+            action.RawFlags = 0;
+            action.WheelDelta = 0;
+            action.Button = string.Empty;
+        }
+        actions.Clear();
+    }
 
     private bool TryCommit(List<MacroAction> proposed, HashSet<int> selectedIndices)
     {
