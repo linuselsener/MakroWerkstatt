@@ -215,6 +215,27 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void Hotkey_capture_commands_keep_invalid_capture_active_and_finish_valid_capture()
+    {
+        using var context = new TestContext();
+        using var viewModel = new MainViewModel(context.Storage, new FakeDialogService());
+
+        Assert.True(viewModel.BeginKeyCaptureCommand.CanExecute(KeyCaptureTarget.RecordingHotkey));
+        viewModel.BeginKeyCaptureCommand.Execute(KeyCaptureTarget.RecordingHotkey);
+        Assert.True(viewModel.IsRecordingHotkeyCaptureActive);
+
+        viewModel.CaptureKeyCommand.Execute(new KeyCaptureRequest(
+            KeyCaptureTarget.RecordingHotkey, 0x41, HotkeyModifiers.None));
+        Assert.True(viewModel.IsRecordingHotkeyCaptureActive);
+
+        viewModel.CaptureKeyCommand.Execute(new KeyCaptureRequest(
+            KeyCaptureTarget.RecordingHotkey, 0x7A, HotkeyModifiers.Control));
+
+        Assert.False(viewModel.IsRecordingHotkeyCaptureActive);
+        Assert.True(viewModel.RecordingHotkey == new GlobalHotkey(0x7A, HotkeyModifiers.Control));
+    }
+
+    [Fact]
     public void Export_all_uses_file_and_passphrase_services_and_clears_the_passphrase_buffer()
     {
         using var context = new TestContext();

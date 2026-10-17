@@ -272,6 +272,9 @@ finally {
             $appProcess.CloseMainWindow() | Out-Null
             if (-not $appProcess.WaitForExit(5000)) {
                 Stop-Process -Id $appProcess.Id -Force
+                if (-not $appProcess.WaitForExit(5000)) {
+                    throw 'Die isolierte MakroWerkstatt-Testinstanz wurde nicht beendet.'
+                }
             }
         }
     }
@@ -282,6 +285,9 @@ finally {
             (Split-Path -Leaf $resolvedTestRoot).StartsWith('MakroWerkstatt-verify-ui-', [System.StringComparison]::Ordinal) -and
             [System.IO.Directory]::Exists($resolvedTestRoot)) {
             [System.IO.Directory]::Delete($resolvedTestRoot, $true)
+            if ([System.IO.Directory]::Exists($resolvedTestRoot)) {
+                throw 'Der temporäre UI-Testordner konnte nicht vollständig entfernt werden.'
+            }
         }
     }
 }

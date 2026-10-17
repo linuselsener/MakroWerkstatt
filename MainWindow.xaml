@@ -1,15 +1,11 @@
 <Window x:Class="MakroWerkstatt.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:MakroWerkstatt"
         Title="MakroWerkstatt" Height="900" Width="1440" MinHeight="760" MinWidth="1120"
         Background="{StaticResource Canvas}" WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI" FontSize="13" Foreground="{StaticResource Ink}"
-        Loaded="Window_Loaded" Closing="Window_Closing" PreviewKeyDown="HotkeyCapture_PreviewKeyDown">
-    <Window.InputBindings>
-        <KeyBinding Key="Z" Modifiers="Control" Command="{Binding UndoActionEditCommand}" />
-        <KeyBinding Key="Y" Modifiers="Control" Command="{Binding RedoActionEditCommand}" />
-        <KeyBinding Key="Delete" Command="{Binding DeleteActionsCommand}" />
-    </Window.InputBindings>
+        Loaded="Window_Loaded" Closing="Window_Closing">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="76" />
@@ -225,6 +221,14 @@
                             <Grid Grid.Row="1">
                               <ListView x:Name="ActionListView" ItemsSource="{Binding Actions}" SelectionMode="Extended"
                                         Margin="2,0,2,3" Height="230">
+                                <ListView.InputBindings>
+                                    <KeyBinding Key="Z" Modifiers="Control" Command="{Binding UndoActionEditCommand}" />
+                                    <KeyBinding Key="Y" Modifiers="Control" Command="{Binding RedoActionEditCommand}" />
+                                    <KeyBinding Key="Delete" Command="{Binding DeleteActionsCommand}" />
+                                    <KeyBinding Key="Up" Modifiers="Control" Command="{Binding MoveActionUpCommand}" />
+                                    <KeyBinding Key="Down" Modifiers="Control" Command="{Binding MoveActionDownCommand}" />
+                                    <KeyBinding Key="D" Modifiers="Control" Command="{Binding DuplicateActionsCommand}" />
+                                </ListView.InputBindings>
                                 <ListView.View>
                                     <GridView AllowsColumnReorder="False">
                                         <GridViewColumn Header="ZEIT" Width="105" DisplayMemberBinding="{Binding DisplayTime}" />
@@ -249,7 +253,7 @@
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="Aktionen bearbeiten" FontSize="13" FontWeight="Bold" />
-                                    <TextBlock Text="Mehrfachauswahl ist möglich · Strg+Z / Strg+Y · Entf löscht die Auswahl"
+                                    <TextBlock Text="Mehrfachauswahl · Strg+Z/Y · Entf löscht · Strg+↑/↓ verschiebt · Strg+D dupliziert"
                                                FontSize="10" Foreground="{StaticResource Muted}" Margin="0,3,0,0" />
                                 </StackPanel>
                                 <WrapPanel Grid.Column="1" VerticalAlignment="Center">
@@ -295,7 +299,13 @@
                                 </StackPanel>
                                 <StackPanel Margin="0,0,10,0">
                                     <TextBlock Text="Taste" FontSize="10" Foreground="{StaticResource Muted}" />
-                                    <Button x:Name="CaptureActionKeyButton" Content="{Binding EditKeyDisplay}" Click="ActionKeyCapture_Click" IsEnabled="{Binding CanCaptureActionKey}"
+                                    <Button x:Name="CaptureActionKeyButton" Content="{Binding EditKeyDisplay}" IsEnabled="{Binding CanCaptureActionKey}"
+                                            local:HotkeyCaptureBehavior.Target="SelectedAction"
+                                            local:HotkeyCaptureBehavior.BeginCommand="{Binding BeginKeyCaptureCommand}"
+                                            local:HotkeyCaptureBehavior.CaptureCommand="{Binding CaptureKeyCommand}"
+                                            local:HotkeyCaptureBehavior.CancelCommand="{Binding CancelKeyCaptureCommand}"
+                                            local:HotkeyCaptureBehavior.IsCapturing="{Binding IsSelectedActionKeyCaptureActive, Mode=OneWay}"
+                                            local:HotkeyCaptureBehavior.Prompt="Jetzt Taste drücken · Esc bricht ab"
                                             Padding="8,5" AutomationProperties.AutomationId="CaptureActionKeyButton" />
                                 </StackPanel>
                                 <Button Content="Werte übernehmen" Command="{Binding ApplyActionEditsCommand}" Padding="10,6" VerticalAlignment="Bottom"
@@ -385,12 +395,24 @@
                             </StackPanel>
                             <StackPanel Grid.Column="1" Margin="0,0,14,0" MinWidth="145">
                                 <TextBlock Text="AUFNAHME STARTEN / STOPPEN" FontSize="9" FontWeight="Bold" Foreground="{StaticResource Muted}" Margin="0,0,0,5" />
-                                <Button x:Name="RecordHotkeyButton" Content="{Binding RecordingHotkeyText}" Click="HotkeyCapture_Click"
+                                <Button x:Name="RecordHotkeyButton" Content="{Binding RecordingHotkeyText}"
+                                        local:HotkeyCaptureBehavior.Target="RecordingHotkey"
+                                        local:HotkeyCaptureBehavior.BeginCommand="{Binding BeginKeyCaptureCommand}"
+                                        local:HotkeyCaptureBehavior.CaptureCommand="{Binding CaptureKeyCommand}"
+                                        local:HotkeyCaptureBehavior.CancelCommand="{Binding CancelKeyCaptureCommand}"
+                                        local:HotkeyCaptureBehavior.IsCapturing="{Binding IsRecordingHotkeyCaptureActive, Mode=OneWay}"
+                                        local:HotkeyCaptureBehavior.Prompt="Jetzt F1–F12 drücken · Esc bricht ab"
                                         Padding="12,7" MinWidth="125" />
                             </StackPanel>
                             <StackPanel Grid.Column="2" MinWidth="160">
                                 <TextBlock Text="WIEDERGABE STARTEN / STOPPEN" FontSize="9" FontWeight="Bold" Foreground="{StaticResource Muted}" Margin="0,0,0,5" />
-                                <Button x:Name="PlaybackHotkeyButton" Content="{Binding PlaybackHotkeyText}" Click="HotkeyCapture_Click"
+                                <Button x:Name="PlaybackHotkeyButton" Content="{Binding PlaybackHotkeyText}"
+                                        local:HotkeyCaptureBehavior.Target="PlaybackHotkey"
+                                        local:HotkeyCaptureBehavior.BeginCommand="{Binding BeginKeyCaptureCommand}"
+                                        local:HotkeyCaptureBehavior.CaptureCommand="{Binding CaptureKeyCommand}"
+                                        local:HotkeyCaptureBehavior.CancelCommand="{Binding CancelKeyCaptureCommand}"
+                                        local:HotkeyCaptureBehavior.IsCapturing="{Binding IsPlaybackHotkeyCaptureActive, Mode=OneWay}"
+                                        local:HotkeyCaptureBehavior.Prompt="Jetzt F1–F12 drücken · Esc bricht ab"
                                         Padding="12,7" MinWidth="140" />
                             </StackPanel>
                         </Grid>

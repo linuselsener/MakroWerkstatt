@@ -54,6 +54,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private bool _loadingSettings;
     private bool _settingsLoaded;
     private bool _disposed;
+    private KeyCaptureTarget? _activeKeyCaptureTarget;
+    private bool _isRecordingHotkeyCaptureActive;
+    private bool _isPlaybackHotkeyCaptureActive;
+    private bool _isSelectedActionKeyCaptureActive;
     private GlobalHotkey _recordingHotkey = new(0x78, HotkeyModifiers.None);
     private GlobalHotkey _playbackHotkey = new(0x79, HotkeyModifiers.None);
     private string _editDelayMs = "0";
@@ -82,6 +86,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public ICommand ExportAllMacrosCommand { get; }
     public ICommand ExportSelectedMacroCommand { get; }
     public ICommand ImportMacrosCommand { get; }
+    public ICommand BeginKeyCaptureCommand { get; }
+    public ICommand CaptureKeyCommand { get; }
+    public ICommand CancelKeyCaptureCommand { get; }
     public ICommand PlayCommand { get; }
     public ICommand StopPlaybackCommand { get; }
     public ICommand StartRecordingCommand { get; }
@@ -126,6 +133,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public bool CanEditWheelDelta => IsEditorEnabled && IsWheelActionSelected;
     public bool CanEditMouseButton => IsEditorEnabled && IsMouseButtonActionSelected;
     public bool CanCaptureActionKey => IsEditorEnabled && IsKeyActionSelected;
+    public bool IsRecordingHotkeyCaptureActive
+    {
+        get => _isRecordingHotkeyCaptureActive;
+        private set => SetProperty(ref _isRecordingHotkeyCaptureActive, value);
+    }
+    public bool IsPlaybackHotkeyCaptureActive
+    {
+        get => _isPlaybackHotkeyCaptureActive;
+        private set => SetProperty(ref _isPlaybackHotkeyCaptureActive, value);
+    }
+    public bool IsSelectedActionKeyCaptureActive
+    {
+        get => _isSelectedActionKeyCaptureActive;
+        private set => SetProperty(ref _isSelectedActionKeyCaptureActive, value);
+    }
     public bool CanUndoActionEdit => _macroEditService.CanUndo;
     public bool CanRedoActionEdit => _macroEditService.CanRedo;
     internal int EditorHistoryCount => _macroEditService.HistoryCount;
@@ -343,6 +365,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ExportAllMacrosCommand = new RelayCommand(() => ExportMacros(selectedOnly: false), () => !IsBusy && Library.Count > 0);
         ExportSelectedMacroCommand = new RelayCommand(() => ExportMacros(selectedOnly: true), () => !IsBusy && SelectedLibraryItem is not null);
         ImportMacrosCommand = new RelayCommand(ImportMacros, () => !IsBusy);
+        BeginKeyCaptureCommand = new RelayCommand(BeginKeyCapture, CanBeginKeyCapture);
+        CaptureKeyCommand = new RelayCommand(CaptureKey, CanCaptureKey);
+        CancelKeyCaptureCommand = new RelayCommand(CancelKeyCapture, CanCancelKeyCapture);
         PlayCommand = new RelayCommand(StartPlayback, CanPlay);
         StopPlaybackCommand = new RelayCommand(StopPlayback, () => IsPlaying);
         StartRecordingCommand = new RelayCommand(StartRecording, () => !IsBusy);
@@ -759,6 +784,84 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         return TrySetHotkey(forRecording, binding);
     }
 
+    private bool CanBeginKeyCapture(object? parameter) =>
+        parameter is KeyCaptureTarget target && target != KeyCaptureTarget.None && !IsBusy
+        && (target != KeyCaptureTarget.SelectedAction || CanCaptureActionKey);
+
+    private void BeginKeyCapture(object? parameter)
+    {
+        if (!CanBeginKeyCapture(parameter) || parameter is not KeyCaptureTarget target) return;
+        CancelActiveKeyCapture();
+        _activeKeyCaptureTarget = target;
+        SetKeyCaptureActive(target, true);
+        if (target is KeyCaptureTarget.RecordingHotkey or KeyCaptureTarget.PlaybackHotkey)
+            _inputCaptureService.SetHotkeysEnabled(false);
+        FooterMessage = target switch
+        {
+            KeyCaptureTarget.SelectedAction => "Taste für die ausgewählte Aktion drücken · Esc bricht ab",
+            _ => "Tastenkürzel auswählen · Esc bricht die Auswahl ab"
+        };
+    }
+
+    private bool CanCaptureKey(object? parameter) =>
+        parameter is KeyCaptureRequest request && _activeKeyCaptureTarget == request.Target;
+
+    private void CaptureKey(object? parameter)
+    {
+        if (parameter is not KeyCaptureRequest request || !CanCaptureKey(request)) return;
+        var captured = request.Target switch
+        {
+            KeyCaptureTarget.RecordingHotkey => TrySetHotkey(forRecording: true,
+                request.VirtualKey, request.Modifiers),
+            KeyCaptureTarget.PlaybackHotkey => TrySetHotkey(forRecording: false,
+                request.VirtualKey, request.Modifiers),
+            KeyCaptureTarget.SelectedAction => TrySetSelectedKey(request.VirtualKey),
+            _ => false
+        };
+        if (captured) CancelActiveKeyCapture();
+    }
+
+    private bool CanCancelKeyCapture(object? parameter) =>
+        parameter is KeyCaptureTarget target && _activeKeyCaptureTarget == target;
+
+    private void CancelKeyCapture(object? parameter)
+    {
+        if (parameter is not KeyCaptureTarget target || !CanCancelKeyCapture(target)) return;
+        CancelActiveKeyCapture();
+        FooterMessage = target == KeyCaptureTarget.SelectedAction
+            ? "Tastenerfassung abgebrochen"
+            : "Tastenkürzel-Auswahl abgebrochen";
+    }
+
+    private void CancelActiveKeyCapture()
+    {
+        if (_activeKeyCaptureTarget is not { } target) return;
+        if (target is KeyCaptureTarget.RecordingHotkey or KeyCaptureTarget.PlaybackHotkey)
+            _inputCaptureService.SetHotkeysEnabled(true);
+        SetKeyCaptureActive(target, false);
+        _activeKeyCaptureTarget = null;
+        ((RelayCommand)CaptureKeyCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)CancelKeyCaptureCommand).RaiseCanExecuteChanged();
+    }
+
+    private void SetKeyCaptureActive(KeyCaptureTarget target, bool active)
+    {
+        switch (target)
+        {
+            case KeyCaptureTarget.RecordingHotkey:
+                IsRecordingHotkeyCaptureActive = active;
+                break;
+            case KeyCaptureTarget.PlaybackHotkey:
+                IsPlaybackHotkeyCaptureActive = active;
+                break;
+            case KeyCaptureTarget.SelectedAction:
+                IsSelectedActionKeyCaptureActive = active;
+                break;
+        }
+        ((RelayCommand)CaptureKeyCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)CancelKeyCaptureCommand).RaiseCanExecuteChanged();
+    }
+
     public void RemoveCapturedShortcutModifiers(IEnumerable<int> modifierKeys)
     {
         foreach (var keyCode in modifierKeys.Distinct())
@@ -825,6 +928,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        CancelActiveKeyCapture();
         lock (_settingsSaveLock)
         {
             _disposed = true;
@@ -951,6 +1055,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     private async void StartPlayback()
     {
+        CancelActiveKeyCapture();
         PlaybackStartRequested?.Invoke(this, EventArgs.Empty);
         if (IsBusy) return;
         if (!InputHookAvailable)
@@ -1249,6 +1354,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private void StartRecording()
     {
         if (IsBusy) return;
+        CancelActiveKeyCapture();
         RecordingStartRequested?.Invoke(this, EventArgs.Empty);
         if (!InputHookAvailable)
         {
@@ -1551,6 +1657,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         ((RelayCommand)ExportAllMacrosCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ExportSelectedMacroCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ImportMacrosCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)BeginKeyCaptureCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)CaptureKeyCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)CancelKeyCaptureCommand).RaiseCanExecuteChanged();
         ((RelayCommand)PlayCommand).RaiseCanExecuteChanged();
         ((RelayCommand)StopPlaybackCommand).RaiseCanExecuteChanged();
         ((RelayCommand)StartRecordingCommand).RaiseCanExecuteChanged();

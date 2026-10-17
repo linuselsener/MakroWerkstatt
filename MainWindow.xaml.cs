@@ -1,9 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -26,8 +24,6 @@ public partial class MainWindow : Window
     private bool _closeWhenPlaybackEnds;
     private bool _allowClose;
     private bool _shutdownCompleted;
-    private Button? _hotkeyCaptureButton;
-    private Button? _actionKeyCaptureButton;
     private bool _syncingActionSelection;
     private bool _updatingUi;
 
@@ -40,7 +36,7 @@ public partial class MainWindow : Window
         _viewModel = new MainViewModel(storage, new WpfDialogService(this), _inputCaptureService,
             new WpfFileDialogService(this), new WpfPassphraseDialogService(this))
         {
-            ShouldIgnoreCapturedAction = ShouldIgnoreOwnWindowAction
+            ShouldIgnoreCapturedAction = new OwnWindowInputFilter(new WpfWindowBoundsProvider(this)).ShouldIgnore
         };
         DataContext = _viewModel;
         _uiTimer.Tick += (_, _) => UpdateActivityDisplay();
@@ -48,8 +44,6 @@ public partial class MainWindow : Window
         Actions.CollectionChanged += (_, _) => RefreshActionList();
         ActionListView.SelectionChanged += ActionListView_SelectionChanged;
         _viewModel.EditorSelectionChanged += (_, _) => SyncActionSelection();
-        _viewModel.RecordingStartRequested += (_, _) => { CancelHotkeyCapture(); CancelActionKeyCapture(); };
-        _viewModel.PlaybackStartRequested += (_, _) => { CancelHotkeyCapture(); CancelActionKeyCapture(); };
         _viewModel.PlaybackStateChanged += (_, _) =>
         {
             if (_uiReady) UpdateUI();
@@ -78,8 +72,7 @@ public partial class MainWindow : Window
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
         _viewModel.LoadSettings();
-        UpdateHotkeyLabels();
-        LoadLibrary(showWarnings: true);
+        _viewModel.LoadLibrary(showWarnings: true);
         try
         {
             _inputCaptureService.SetRawInputTarget(new WindowInteropHelper(this).Handle);
@@ -97,110 +90,6 @@ public partial class MainWindow : Window
         _uiReady = true;
         UpdateUI();
         UpdateEstimate();
-    }
-
-    private void LoadLibrary(bool showWarnings)
-    {
-        _viewModel.LoadLibrary(showWarnings);
-    }
-
-    private bool ShouldIgnoreOwnWindowAction(MacroAction action)
-    {
-        var handle = new WindowInteropHelper(this).Handle;
-        if (handle == IntPtr.Zero) return false;
-        if (action.Type is MacroActionType.KeyDown or MacroActionType.KeyUp)
-            return GetForegroundWindow() == handle;
-
-        if (action.Type == MacroActionType.MouseMoveRelative)
-            return GetForegroundWindow() == handle;
-
-        if (!GetWindowRect(handle, out var rect)) return false;
-        return action.X >= rect.Left && action.X < rect.Right && action.Y >= rect.Top && action.Y < rect.Bottom;
-    }
-
-    private void HotkeyCapture_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button button || _isRecording || _isPaused || _isPlaying) return;
-        CancelHotkeyCapture();
-        _hotkeyCaptureButton = button;
-        _inputCaptureService.SetHotkeysEnabled(false);
-        button.SetCurrentValue(ContentControl.ContentProperty, "Jetzt F1–F12 drücken · Esc bricht ab");
-        button.Focus();
-        _footerMessage = "Tastenkürzel auswählen · Esc bricht die Auswahl ab";
-        UpdateActivityDisplay();
-    }
-
-    private void HotkeyCapture_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (_actionKeyCaptureButton is not null)
-        {
-            var actionKey = e.Key == Key.System ? e.SystemKey : e.Key;
-            e.Handled = true;
-            if (actionKey == Key.Escape)
-            {
-                CancelActionKeyCapture();
-                _footerMessage = "Tastenerfassung abgebrochen";
-                UpdateActivityDisplay();
-                return;
-            }
-            var capturedActionKeyCode = KeyInterop.VirtualKeyFromKey(actionKey);
-            if (_viewModel.TrySetSelectedKey(capturedActionKeyCode))
-                CancelActionKeyCapture();
-            return;
-        }
-        if (_hotkeyCaptureButton is null) return;
-        var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        e.Handled = true;
-        if (key == Key.Escape)
-        {
-            CancelHotkeyCapture();
-            _footerMessage = "Tastenkürzel-Auswahl abgebrochen";
-            UpdateActivityDisplay();
-            return;
-        }
-        var modifiers = HotkeyModifiers.None;
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) modifiers |= HotkeyModifiers.Control;
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) modifiers |= HotkeyModifiers.Alt;
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) modifiers |= HotkeyModifiers.Shift;
-        var keyCode = KeyInterop.VirtualKeyFromKey(key);
-        var isRecordingBinding = _hotkeyCaptureButton == RecordHotkeyButton;
-        if (!_viewModel.TrySetHotkey(isRecordingBinding, keyCode, modifiers))
-        {
-            UpdateActivityDisplay();
-            return;
-        }
-
-        _inputCaptureService.SetHotkeysEnabled(true);
-        _hotkeyCaptureButton = null;
-        UpdateHotkeyLabels();
-        UpdateActivityDisplay();
-    }
-
-    private void CancelHotkeyCapture()
-    {
-        if (_hotkeyCaptureButton is null) return;
-        _hotkeyCaptureButton = null;
-        _inputCaptureService.SetHotkeysEnabled(true);
-        UpdateHotkeyLabels();
-    }
-
-    private void ActionKeyCapture_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button button || _isRecording || _isPaused || _isPlaying || !_viewModel.IsKeyActionSelected) return;
-        CancelHotkeyCapture();
-        _actionKeyCaptureButton = button;
-        button.SetCurrentValue(ContentControl.ContentProperty, "Jetzt Taste drücken · Esc bricht ab");
-        button.Focus();
-        _footerMessage = "Taste für die ausgewählte Aktion drücken · Esc bricht ab";
-        UpdateActivityDisplay();
-    }
-
-    private void CancelActionKeyCapture()
-    {
-        if (_actionKeyCaptureButton is null) return;
-        _actionKeyCaptureButton = null;
-        if (IsInitialized)
-            CaptureActionKeyButton?.SetCurrentValue(ContentControl.ContentProperty, _viewModel.EditKeyDisplay);
     }
 
     private void ActionListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -223,14 +112,6 @@ public partial class MainWindow : Window
         {
             _syncingActionSelection = false;
         }
-    }
-
-    private void UpdateHotkeyLabels()
-    {
-        if (RecordHotkeyButton is not null)
-            RecordHotkeyButton.SetCurrentValue(ContentControl.ContentProperty, _viewModel.RecordingHotkeyText);
-        if (PlaybackHotkeyButton is not null)
-            PlaybackHotkeyButton.SetCurrentValue(ContentControl.ContentProperty, _viewModel.PlaybackHotkeyText);
     }
 
     private void UpdateEstimate() => _viewModel.UpdateEstimate();
@@ -358,19 +239,4 @@ public partial class MainWindow : Window
         _shutdownCompleted = true;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeRect
-    {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
-    }
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetWindowRect(IntPtr handle, out NativeRect rect);
 }
