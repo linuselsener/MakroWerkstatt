@@ -1,0 +1,26 @@
+name: Funktionsvorschlag / Feature request
+description: Eine Verbesserung vorschlagen / Suggest an improvement
+title: "[Vorschlag / Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem oder Anwendungsfall / Problem or use case
+      description: Was möchtest du erreichen? / What are you trying to accomplish?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Vorschlag / Proposed solution
+      description: Wie könnte MakroWerkstatt dabei helfen? / How could MakroWerkstatt help?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativen und Kontext / Alternatives and context
+      description: Weitere Ansätze oder wichtige Hinweise / Other approaches or relevant context
+    validations:
+      required: false

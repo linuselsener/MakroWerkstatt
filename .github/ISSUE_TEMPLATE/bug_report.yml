@@ -1,0 +1,60 @@
+name: Fehlerbericht / Bug report
+description: Einen Fehler melden / Report a bug
+title: "[Fehler / Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bitte keine Makrodateien, Passwörter, Passphrasen oder Logs mit privaten Inhalten posten.
+        Please do not post macro files, passwords, passphrases, or logs containing private information.
+  - type: input
+    id: version
+    attributes:
+      label: Version / Version
+      description: Welche MakroWerkstatt-Version verwendest du? / Which version are you using?
+      placeholder: 1.1.0
+    validations:
+      required: true
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows-Version / Windows version
+      description: Zum Beispiel Windows 11 24H2 / For example, Windows 11 24H2
+    validations:
+      required: false
+  - type: input
+    id: target-application
+    attributes:
+      label: Zielanwendung / Target application
+      description: In welcher Anwendung tritt das Problem auf? / Which application is affected?
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Beschreibung / Description
+      description: Was ist passiert? / What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Schritte zur Reproduktion / Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Erwartetes Verhalten / Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Tatsächliches Verhalten / Actual behavior
+    validations:
+      required: true
