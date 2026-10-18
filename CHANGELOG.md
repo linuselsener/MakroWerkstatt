@@ -2,6 +2,13 @@
 
 Alle bemerkenswerten Änderungen an MakroWerkstatt werden hier dokumentiert. Das Format folgt Keep a Changelog; Versionsnummern verwenden das Schema `x.y.z`.
 
+## [Unreleased]
+
+### Dokumentation
+
+- Aktualisiert den Meldeweg für Sicherheitslücken und präzisiert die Angaben zum Datenpfad.
+- Zeigt die neueste Release-Version dynamisch an und verwendet einen versionsunabhängigen Prüfbefehl.
+
 ## [1.1.0] - 2026-10-17
 
 ### Hinzugefügt
