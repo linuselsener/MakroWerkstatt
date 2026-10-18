@@ -2,7 +2,7 @@
 
 ## Lokale Ablage und Verschlüsselung
 
-Makros liegen unter `%LOCALAPPDATA%\MakroWerkstatt\Makros\<ID>.json`, Einstellungen einschließlich Kürzel und Wiedergabe-Timing unter `%LOCALAPPDATA%\MakroWerkstatt\settings.json`. Die App baut keine Netzwerkverbindung auf und sendet keine Makros, Eingaben oder Nutzungsdaten.
+Der Standard-Datenpfad wird über die Windows-API `Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)` ermittelt; darunter liegen Makros in `MakroWerkstatt\Makros\<ID>.json` und Einstellungen einschließlich Kürzel und Wiedergabe-Timing in `MakroWerkstatt\settings.json`. `MAKROWERKSTATT_DATA_DIR` kann den Stammordner überschreiben; Logs liegen im Unterordner `logs`. Die Umgebungsvariable `LOCALAPPDATA` wird nicht direkt ausgewertet. Die App baut keine Netzwerkverbindung auf und sendet keine Makros, Eingaben oder Nutzungsdaten.
 
 Makrodateien werden zunächst in einer temporären Datei im selben Ordner geschrieben und nach erfolgreichem Zurücklesen atomar ersetzt. Beim Start oder Laden werden vorhandene Dateien nicht automatisch umgeschrieben.
 

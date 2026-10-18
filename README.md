@@ -12,8 +12,8 @@
 
 MakroWerkstatt is a macro recorder for Windows.
 It records mouse and keyboard input only after the user starts a recording.
-The default data directory is under the current user's profile and can be overridden with `MAKROWERKSTATT_DATA_DIR`.
-The application code contains no built-in network client, updater, or telemetry client.
+The default data directory is obtained through Windows' LocalApplicationData API; `MAKROWERKSTATT_DATA_DIR` overrides it.
+The app does not read the `LOCALAPPDATA` environment variable directly and has no built-in network client, updater, or telemetry client.
 Encrypted exports can be moved between Windows accounts with a passphrase.
 The app is built with C#/.NET 8 and WPF.
 See [SECURITY.md](SECURITY.md) for security reporting guidance.
@@ -77,7 +77,7 @@ Aufgezeichnete Makros können alles enthalten, was während der Aufnahme getippt
 
 ### Wo Daten liegen und wie sie geschützt sind
 
-Standardmäßig liegen Makros, Einstellungen und Logs unter `%LOCALAPPDATA%\MakroWerkstatt`; Makros liegen im Unterordner `Makros`, Logs in `logs`. Die Umgebungsvariable `MAKROWERKSTATT_DATA_DIR` kann diesen Datenpfad für Makros, Einstellungen und Logs ändern. Die App prüft nicht, ob der gewählte Pfad auf einem lokalen Laufwerk liegt. Verwende nach Möglichkeit ein lokales, nicht synchronisiertes Laufwerk. Bei einem Netzlaufwerk oder einem synchronisierten Cloud-Ordner können Dateien den Rechner verlassen. Einstellungen und Logs sind nicht durch DPAPI verschlüsselt.
+Der Standard-Datenpfad wird über die Windows-API `Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)` ermittelt; darunter verwendet die App den Ordner `MakroWerkstatt`. Die Umgebungsvariable `LOCALAPPDATA` wird nicht direkt ausgewertet. Mit `MAKROWERKSTATT_DATA_DIR` lässt sich der Stammordner überschreiben: Makros und Einstellungen liegen darunter, Logs im Unterordner `logs`. Die App prüft nicht, ob der gewählte Pfad auf einem lokalen Laufwerk liegt. Verwende nach Möglichkeit ein lokales, nicht synchronisiertes Laufwerk. Bei einem Netzlaufwerk oder einem synchronisierten Cloud-Ordner können Dateien den Rechner verlassen. Einstellungen und Logs sind nicht durch DPAPI verschlüsselt.
 
 Makros werden standardmäßig mit Windows DPAPI für das aktuelle Benutzerkonto verschlüsselt. Die Einstellung **Makros verschlüsseln** kann neue Speichervorgänge stattdessen im Klartext ablegen; ältere Makrodateien der Versionen 1 und 2 bleiben bis zu ihrer ausdrücklich gestarteten Migration im Klartext lesbar. DPAPI schützt gespeicherte Dateien, aber nicht vor Schadsoftware im selben Windows-Benutzerkonto. Nach einem Wechsel des Benutzerprofils oder Geräts ist die Entschlüsselung nicht zugesichert. Teile verschlüsselter Makrodateien oder Exporte nicht unbedacht.
 
