@@ -3,7 +3,7 @@
 **Makro-Recorder für Windows** zur ausdrücklichen Aufnahme, Prüfung, Speicherung und Wiedergabe von Maus- und Tastatureingaben.
 
 [![CI](https://github.com/linuselsener/MakroWerkstatt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/linuselsener/MakroWerkstatt/actions/workflows/ci.yml)
-[![Projektversion 1.1.0](https://img.shields.io/badge/Projektversion-1.1.0-blue)](CHANGELOG.md)
+[![Neueste Version](https://img.shields.io/github/v/release/linuselsener/MakroWerkstatt?label=Neueste%20Version)](https://github.com/linuselsener/MakroWerkstatt/releases/latest)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-green.svg)](LICENSE)
 [![Windows x64](https://img.shields.io/badge/Windows-x64-0078D4)](#systemvoraussetzungen)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)](#aus-dem-quellcode-bauen)
