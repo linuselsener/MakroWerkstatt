@@ -1,4 +1,4 @@
-name: Release build
+name: Release draft
 
 on:
   push:
@@ -11,6 +11,8 @@ permissions:
 jobs:
   package:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -65,7 +67,7 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\publish-windows.ps1 -NoShortcut
 
-      - name: Upload release artifact
+      - name: Upload release files
         uses: actions/upload-artifact@v7
         with:
           name: MakroWerkstatt-${{ steps.version.outputs.version }}-win-x64
@@ -74,11 +76,47 @@ jobs:
             dist/SHA256SUMS.txt
           if-no-files-found: error
 
-      # Ein GitHub Release wird nicht automatisch erstellt. Nach ausdrücklicher Freigabe
-      # den folgenden Schritt aktivieren und contents: write nur für diesen Zweck erteilen.
-      # - name: GitHub Release nach Freigabe erstellen
-      #   uses: softprops/action-gh-release@v2
-      #   with:
-      #     files: |
-      #       dist/MakroWerkstatt-${{ steps.version.outputs.version }}-win-x64.zip
-      #       dist/SHA256SUMS.txt
+  create-draft:
+    needs: package
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: MakroWerkstatt-${{ needs.package.outputs.version }}-win-x64
+          path: dist
+
+      - name: Extract release notes
+        id: notes
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          $changelog = Get-Content -LiteralPath .\CHANGELOG.md -Raw
+          $versionPattern = [regex]::Escape($env:RELEASE_VERSION)
+          $pattern = "(?ms)^## \[$versionPattern\][^\r\n]*\r?\n(?<notes>.*?)(?=^## \[|\z)"
+          $match = [regex]::Match($changelog, $pattern)
+          if ($match.Success -and -not [string]::IsNullOrWhiteSpace($match.Groups['notes'].Value)) {
+            $notes = $match.Groups['notes'].Value.Trim()
+          } else {
+            $notes = "Für Version $($env:RELEASE_VERSION) wurde kein passender Abschnitt in CHANGELOG.md gefunden."
+          }
+          Set-Content -LiteralPath .\release-notes.md -Value $notes -Encoding utf8
+
+      - name: Create GitHub release draft
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $title = "MakroWerkstatt $($env:RELEASE_VERSION)"
+          $zip = Join-Path .\dist "MakroWerkstatt-$($env:RELEASE_VERSION)-win-x64.zip"
+          $checksums = Join-Path .\dist 'SHA256SUMS.txt'
+          if (-not (Test-Path -LiteralPath $zip)) { throw "Release-ZIP fehlt: $zip" }
+          if (-not (Test-Path -LiteralPath $checksums)) { throw "SHA256SUMS.txt fehlt: $checksums" }
+          gh release create $tag $zip $checksums --draft --title $title --notes-file .\release-notes.md --verify-tag
+          if ($LASTEXITCODE -ne 0) { throw "gh release create wurde mit Code $LASTEXITCODE beendet." }
