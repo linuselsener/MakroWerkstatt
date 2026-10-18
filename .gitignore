@@ -6,3 +6,5 @@ dist-update-*/
 *.user
 *.suo
 TestResults/
+*.mwexport
+*.log
