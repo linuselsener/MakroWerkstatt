@@ -34,7 +34,7 @@ ZIP herunterladen, entpacken und `MakroWerkstatt.exe` starten. Die veröffentlic
 Die EXE ist nicht digital signiert. Windows SmartScreen kann deshalb beim ersten Start eine Warnung anzeigen. Prüfe, ob die ZIP von der oben verlinkten Release-Seite stammt, und vergleiche ihre Prüfsumme mit `SHA256SUMS.txt`:
 
 ```powershell
-Get-FileHash .\MakroWerkstatt-1.1.0-win-x64.zip -Algorithm SHA256
+Get-FileHash .\MakroWerkstatt-*-win-x64.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS.txt
 ```
 
