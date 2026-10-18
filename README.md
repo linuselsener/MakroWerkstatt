@@ -12,7 +12,8 @@
 
 MakroWerkstatt is a macro recorder for Windows.
 It records mouse and keyboard input only after the user starts a recording.
-Macros are stored locally and protected with Windows DPAPI by default.
+The default data directory is under the current user's profile and can be overridden with `MAKROWERKSTATT_DATA_DIR`.
+The application code contains no built-in network client, updater, or telemetry client.
 Encrypted exports can be moved between Windows accounts with a passphrase.
 The app is built with C#/.NET 8 and WPF.
 See [SECURITY.md](SECURITY.md) for security reporting guidance.
@@ -42,11 +43,11 @@ Vergleiche den SHA-256-Wert der ZIP-Datei mit der Zeile für genau diesen ZIP-Da
 ## Funktionen
 
 - Maus- und Tastaturaufnahme nach ausdrücklichem Start, mit Pause und Fortsetzen
-- Lokales Speichern und Wiedergabe gespeicherter Makros
+- Speicherung standardmäßig unter dem Windows-Benutzerprofil und Wiedergabe gespeicherter Makros; der Datenpfad ist konfigurierbar
 - Wiedergabe mit einstellbarem Timing, Wiederholungen und optionaler zufälliger Zusatzverzögerung
 - Globale, konfigurierbare Aufnahme- und Wiedergabekürzel
 - Aktionseditor mit Mehrfachauswahl, Drag & Drop, Undo und Redo
-- Verschlüsselte lokale Speicherung sowie passphrasegeschützter Export und Import
+- Standardmäßig DPAPI-verschlüsselte Makrospeicherung sowie passphrasegeschützter Export und Import
 
 ## Screenshots
 
@@ -68,16 +69,32 @@ Noch keine Screenshots veröffentlicht. Hinweise zu den gewünschten Bildern und
 
 ## Datenschutz und Sicherheit
 
-Makros und Einstellungen bleiben lokal im Windows-Benutzerprofil. Die App baut keine Netzwerkverbindung auf und sendet keine Makros, Eingaben oder Nutzungsdaten. Für die lokale Speicherung werden Makros standardmäßig mit Windows DPAPI für das aktuelle Benutzerkonto verschlüsselt. Einstellungen wie Kürzel und Wiedergabe-Timing sind davon ausgenommen.
+### Was die App mit Eingaben macht
 
-Der verschlüsselte Export verwendet eine Passphrase, die nicht gespeichert wird und nicht wiederhergestellt werden kann. Eine vergessene Passphrase macht den Export unlesbar. Makros können Passwörter oder andere vertrauliche Eingaben enthalten, auch wenn sie verschlüsselt gespeichert werden. Behandle Makros und Exportdateien entsprechend vertraulich.
+Beim Laden des Hauptfensters installiert MakroWerkstatt globale Windows-Hooks für Tastatur und Maus. Sie verarbeiten Eingabeereignisse auch außerhalb einer Aufnahme, unter anderem um die konfigurierten Tastenkürzel zu erkennen. Vor dem Start einer Aufnahme fragt die App ausdrücklich nach einer Datenschutzbestätigung. Nur während einer aktiven Aufnahme werden Ereignisse in die Makro-Aktionsliste übernommen. Außerhalb einer Aufnahme werden sie nicht als Makro gespeichert. Hook-Ereignisse werden vor dieser Prüfung kurzzeitig im Prozess und gegebenenfalls in der UI-Dispatcher-Warteschlange verarbeitet. Die geprüften Logger-Aufrufstellen übergeben weder Eingabeinhalte noch Makro-Aktionen an den Logger.
+
+Aufgezeichnete Makros können alles enthalten, was während der Aufnahme getippt wird, einschließlich Passwörtern. Entschlüsselte Makros und der Aktionseditor-Verlauf liegen während der Verwendung im Arbeitsspeicher. Der Verlauf kann bis zu 100 frühere Zustände plus den aktuellen Zustand enthalten. Einzelne Byte-Puffer und Editor-Aktionen werden an bestimmten Stellen überschrieben; der verwaltete Speicher und alle Kopien werden dadurch nicht garantiert vollständig gelöscht.
+
+### Wo Daten liegen und wie sie geschützt sind
+
+Standardmäßig liegen Makros, Einstellungen und Logs unter `%LOCALAPPDATA%\MakroWerkstatt`; Makros liegen im Unterordner `Makros`, Logs in `logs`. Die Umgebungsvariable `MAKROWERKSTATT_DATA_DIR` kann diesen Datenpfad für Makros, Einstellungen und Logs ändern. Die App prüft nicht, ob der gewählte Pfad auf einem lokalen Laufwerk liegt. Verwende nach Möglichkeit ein lokales, nicht synchronisiertes Laufwerk. Bei einem Netzlaufwerk oder einem synchronisierten Cloud-Ordner können Dateien den Rechner verlassen. Einstellungen und Logs sind nicht durch DPAPI verschlüsselt.
+
+Makros werden standardmäßig mit Windows DPAPI für das aktuelle Benutzerkonto verschlüsselt. Die Einstellung **Makros verschlüsseln** kann neue Speichervorgänge stattdessen im Klartext ablegen; ältere Makrodateien der Versionen 1 und 2 bleiben bis zu ihrer ausdrücklich gestarteten Migration im Klartext lesbar. DPAPI schützt gespeicherte Dateien, aber nicht vor Schadsoftware im selben Windows-Benutzerkonto. Nach einem Wechsel des Benutzerprofils oder Geräts ist die Entschlüsselung nicht zugesichert. Teile verschlüsselter Makrodateien oder Exporte nicht unbedacht.
+
+Der Export ist mit einer Passphrase geschützt: PBKDF2-SHA256 mit standardmäßig 600.000 Iterationen und AES-256-GCM. Die Passphrase muss mindestens 12 Zeichen lang sein, wird nicht gespeichert und kann nicht wiederhergestellt werden. Bei Verlust der Passphrase ist der Export nicht mehr lesbar.
+
+Logs liegen standardmäßig im Ordner `logs` unter dem Datenpfad. Sie enthalten Diagnoseangaben wie Zeitstempel, Schweregrad, Quelle, Meldung und bei Fehlern Typ, Fehlercodes und Stacktrace. Die geprüften Logger-Aufrufstellen übergeben keine Makro-Aktionswerte oder Tasteninhalte. Beim Start versucht die App, Logs zu löschen, die älter als 14 Tage sind; Fehler bei dieser Bereinigung werden abgefangen, daher ist die Löschung nicht garantiert.
+
+In der geprüften Anwendungscodebasis wurden keine Netzwerk-Clients, Updateprüfungen oder Telemetrie-Clients gefunden. Das ist keine Sperre gegen Netzwerkzugriffe des Betriebssystems: Ein konfigurierter Datenpfad auf einem Netzlaufwerk oder in einem synchronisierten Ordner kann Netzwerkverkehr verursachen.
+
+Die EXE ist nicht digital signiert; SmartScreen kann deshalb beim ersten Start warnen. Vergleiche den SHA-256-Wert der ZIP-Datei mit dem passenden Eintrag in `SHA256SUMS.txt`, wie im Abschnitt [SmartScreen und Prüfsumme](#smartscreen-und-prüfsumme) beschrieben. Eine passende Prüfsumme bestätigt nur den Vergleich mit der bereitgestellten Prüfsummendatei und ersetzt keine digitale Signatur. Nach der öffentlichen Freigabe des Repositorys kann der Quellcode auf GitHub eingesehen werden.
 
 Weitere Hinweise stehen in [SECURITY.md](SECURITY.md) und [docs/FORMAT-UND-EXPORT.md](docs/FORMAT-UND-EXPORT.md).
 
 ## Bekannte Einschränkungen
 
-- Anwendungen mit Anti-Cheat-Systemen oder ausschließlichem Raw-Input können synthetische Eingaben blockieren oder relative Mausbewegungen ignorieren.
-- Relative Mausbewegung für die Wiedergabe setzt passende relative Eingabedaten voraus. Bei geänderter Monitoranordnung, Auflösung oder Skalierung können gespeicherte Bildschirmpositionen abweichen.
+- Die Wiedergabe sendet synthetische Eingaben über Windows `SendInput`. Programme mit Anti-Cheat- oder Raw-Input-Beschränkungen können sie blockieren; eine Kompatibilität wird nicht garantiert.
+- Die relative Mausaufnahme benötigt eine erfolgreiche Raw-Input-Registrierung. Bei relativer Wiedergabe werden vorhandene relative Mausaktionen verwendet; wenn keine vorhanden sind, bildet die App Deltas aus aufeinanderfolgenden absoluten Positionen. Monitoranordnung, Auflösung und Skalierung können das Ergebnis beeinflussen.
 - Windows kann Eingaben auf dem sicheren Desktop, an UAC-Abfragen, am Anmeldebildschirm und in geschützten Anwendungen blockieren. Die App umgeht diese Grenzen nicht.
 - Prüfe vor dem Einsatz selbst die Nutzungsbedingungen der jeweiligen Spiele und Programme.
 
