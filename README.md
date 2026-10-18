@@ -2,7 +2,7 @@
 
 **Makro-Recorder für Windows** zur ausdrücklichen Aufnahme, Prüfung, Speicherung und Wiedergabe von Maus- und Tastatureingaben.
 
-[![CI](https://github.com/<GITHUB_USERNAME>/MakroWerkstatt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/<GITHUB_USERNAME>/MakroWerkstatt/actions/workflows/ci.yml)
+[![CI](https://github.com/linuselsener/MakroWerkstatt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/linuselsener/MakroWerkstatt/actions/workflows/ci.yml)
 [![Projektversion 1.1.0](https://img.shields.io/badge/Projektversion-1.1.0-blue)](CHANGELOG.md)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-green.svg)](LICENSE)
 [![Windows x64](https://img.shields.io/badge/Windows-x64-0078D4)](#systemvoraussetzungen)
@@ -19,7 +19,7 @@ See [SECURITY.md](SECURITY.md) for security reporting guidance.
 
 ## Download
 
-**[Zur neuesten Release-Seite und zum ZIP-Download](https://github.com/<GITHUB_USERNAME>/MakroWerkstatt/releases/latest)**
+**[Zur neuesten Release-Seite und zum ZIP-Download](https://github.com/linuselsener/MakroWerkstatt/releases/latest)**
 
 ZIP herunterladen, entpacken und `MakroWerkstatt.exe` starten. Die veröffentlichte x64-Datei ist selbstständig; eine separate .NET-Runtime ist zum Start nicht erforderlich.
 
@@ -60,7 +60,7 @@ Noch keine Screenshots veröffentlicht. Hinweise zu den gewünschten Bildern und
 
 ## Schnellstart
 
-1. Lade das ZIP von der [Release-Seite](https://github.com/<GITHUB_USERNAME>/MakroWerkstatt/releases/latest) herunter und prüfe die Prüfsumme.
+1. Lade das ZIP von der [Release-Seite](https://github.com/linuselsener/MakroWerkstatt/releases/latest) herunter und prüfe die Prüfsumme.
 2. Entpacke das ZIP und starte `MakroWerkstatt.exe`.
 3. Starte eine Aufnahme über die Schaltfläche **Neue Aufnahme** oder das globale Kürzel **F9** und bestätige den Hinweis zu vertraulichen Eingaben.
 4. Stoppe die Aufnahme, prüfe die Aktionen und speichere das Makro.

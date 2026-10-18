@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Sicherheitslücke vertraulich melden / Report a security vulnerability privately
-    url: "https://github.com/<GITHUB_USERNAME>/MakroWerkstatt/blob/main/SECURITY.md"
+    url: "https://github.com/linuselsener/MakroWerkstatt/blob/main/SECURITY.md"
     about: "Bitte die Hinweise in SECURITY.md befolgen / Please follow the guidance in SECURITY.md"
