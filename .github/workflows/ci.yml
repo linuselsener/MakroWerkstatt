@@ -23,28 +23,18 @@ jobs:
         with:
           dotnet-version: 8.0.x
           cache: true
-          cache-dependency-path: |
-            MakroWerkstatt.csproj
-            tests/MakroWerkstatt.Tests/MakroWerkstatt.Tests.csproj
-            tools/SmokeTests/SmokeTests.csproj
+          cache-dependency-path: MakroWerkstatt.sln
 
       - name: Restore
         shell: pwsh
         run: |
-          dotnet restore .\tests\MakroWerkstatt.Tests\MakroWerkstatt.Tests.csproj
-          dotnet restore .\tools\SmokeTests\SmokeTests.csproj
+          dotnet restore .\MakroWerkstatt.sln
 
-      - name: Build app
-        run: dotnet build .\MakroWerkstatt.csproj -c Release --no-restore -warnaserror
-
-      - name: Build tests
-        run: dotnet build .\tests\MakroWerkstatt.Tests\MakroWerkstatt.Tests.csproj -c Release --no-restore -warnaserror
-
-      - name: Build smoke test
-        run: dotnet build .\tools\SmokeTests\SmokeTests.csproj -c Release --no-restore -warnaserror
+      - name: Build solution
+        run: dotnet build .\MakroWerkstatt.sln -c Release --no-restore -warnaserror
 
       - name: Run xUnit tests
-        run: dotnet test .\tests\MakroWerkstatt.Tests\MakroWerkstatt.Tests.csproj -c Release --no-build --no-restore --logger "trx;LogFileName=tests.trx" --results-directory TestResults
+        run: dotnet test .\MakroWerkstatt.sln -c Release --no-build --no-restore --logger "trx;LogFileName=tests.trx" --results-directory TestResults
 
       - name: Run console smoke test
         run: dotnet run --project .\tools\SmokeTests\SmokeTests.csproj -c Release --no-build --no-restore
