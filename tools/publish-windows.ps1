@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$NoShortcut
+    [switch]$NoShortcut,
+    [string]$OutputDirectory
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,13 +9,17 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $repoRoot 'MakroWerkstatt.csproj'
 $defaultPublishFolder = Join-Path $repoRoot 'dist'
 $defaultExe = Join-Path $defaultPublishFolder 'MakroWerkstatt.exe'
-$runningFromDefaultFolder = Get-Process -Name 'MakroWerkstatt' -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -and $_.Path.Equals($defaultExe, [StringComparison]::OrdinalIgnoreCase) } |
-    Select-Object -First 1
-$publishFolder = if ($runningFromDefaultFolder) {
-    Join-Path $repoRoot ("dist-update-$(Get-Date -Format 'yyyyMMdd-HHmmss')")
+$publishFolder = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    $runningFromDefaultFolder = Get-Process -Name 'MakroWerkstatt' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and $_.Path.Equals($defaultExe, [StringComparison]::OrdinalIgnoreCase) } |
+        Select-Object -First 1
+    if ($runningFromDefaultFolder) {
+        Join-Path $repoRoot ("dist-update-$(Get-Date -Format 'yyyyMMdd-HHmmss')")
+    } else {
+        $defaultPublishFolder
+    }
 } else {
-    $defaultPublishFolder
+    [System.IO.Path]::GetFullPath($OutputDirectory, $repoRoot)
 }
 
 [xml]$projectXml = Get-Content -LiteralPath $project -Raw
