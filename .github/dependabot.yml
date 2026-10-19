@@ -5,6 +5,17 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: actions/download-artifact
+        update-types:
+          - version-update:semver-major
+      - dependency-name: actions/upload-artifact
+        update-types:
+          - version-update:semver-major
   - package-ecosystem: nuget
     directories:
       - /
